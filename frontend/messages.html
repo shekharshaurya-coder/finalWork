@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>Messages - SocialSync</title>
+    <link rel="stylesheet" href="messages.css">
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    
+</head>
+<body>
+    <!-- Top header (Feed + Search + Logout) -->
+    <header class="top-header">
+        <div class="header-left">
+            <button class="feed-btn">📰 Feed</button>
+        </div>
+
+        <div class="header-right">
+            <button class="search-btn">🔍 Search</button>
+            <button class="logout-btn">Logout</button>
+        </div>
+    </header>
+
+    <!-- Page container (no sidebar) -->
+    <div class="container no-sidebar">
+        <main class="main-content">
+            <div class="messages-container">
+                <div class="messages-header">
+                    <h2>Messages</h2>
+                    <button class="new-message-btn">+ New Message</button>
+                </div>
+
+                <div class="conversations-list">
+                    <div class="conversation-item" data-username="avani">
+                        <div class="conversation-avatar">
+                            <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
+                                <circle cx="25" cy="25" r="25" fill="#6B7FD7"/>
+                                <path d="M25 25C28.866 25 32 21.866 32 18C32 14.134 28.866 11 25 11C21.134 11 18 14.134 18 18C18 21.866 21.134 25 25 25Z" fill="white"/>
+                                <path d="M25 27.5C17.2156 27.5 11 33.7156 11 41.5V45H39V41.5C39 33.7156 32.7844 27.5 25 27.5Z" fill="white"/>
+                            </svg>
+                        </div>
+                        <div class="conversation-info">
+                            <h3>avani jahagirdar</h3>
+                            <p class="last-message">hiee guys</p>
+                        </div>
+                        <div class="conversation-meta">
+                            <span class="time">1d ago</span>
+                        </div>
+                    </div>
+
+                    <div class="conversation-item" data-username="admin">
+                        <div class="conversation-avatar">
+                            <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
+                                <circle cx="25" cy="25" r="25" fill="#6B7FD7"/>
+                                <path d="M25 25C28.866 25 32 21.866 32 18C32 14.134 28.866 11 25 11C21.134 11 18 14.134 18 18C18 21.866 21.134 25 25 25Z" fill="white"/>
+                                <path d="M25 27.5C17.2156 27.5 11 33.7156 11 41.5V45H39V41.5C39 33.7156 32.7844 27.5 25 27.5Z" fill="white"/>
+                            </svg>
+                        </div>
+                        <div class="conversation-info">
+                            <h3>admin</h3>
+                            <p class="last-message">hey, i am admin !!!</p>
+                        </div>
+                        <div class="conversation-meta">
+                            <span class="time">1d ago</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="messages.js"></script>
+    <script>
+      // small connector to ensure topbar search button opens your existing overlay
+      document.addEventListener('DOMContentLoaded', () => {
+        const searchBtn = document.querySelector('.search-btn');
+        if (searchBtn) {
+          searchBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            // openSearchOverlay is defined in your messages.js; call it if available
+            if (typeof openSearchOverlay === 'function') {
+              openSearchOverlay();
+            } else {
+              // fallback: try to trigger nav search behavior if present
+              const navSearch = document.querySelector('.nav-item .nav-icon');
+              if (navSearch) navSearch.click();
+            }
+          });
+        }
+      });
+    </script>
+</body>
+</html>

@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SocialSync – Media Library</title>
+
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #0a0a0a;
+            color: #e4e6eb;
+        }
+
+        .app {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* SIDEBAR */
+        .sidebar {
+            width: 260px;
+            background: #18191a;
+            border-right: 1px solid #2f3336;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            border-bottom: 1px solid #2f3336;
+        }
+
+        .sidebar-logo {
+            font-size: 28px;
+            font-weight: 900;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
+        }
+
+        .menu {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .menu-link {
+            display: block;
+            padding: 12px 20px;
+            color: #e4e6eb;
+            text-decoration: none;
+            font-size: 14px;
+            transition: 0.2s;
+        }
+
+        .menu-link:hover {
+            background: #2f3336;
+            color: #667eea;
+        }
+
+        .menu-link.active {
+            background: rgba(102, 126, 234, 0.2);
+            color: #667eea;
+            border-left: 3px solid #667eea;
+            padding-left: 17px;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding: 20px;
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 10px;
+            background: #2f3336;
+            border: 1px solid #3a3b3c;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+            color: #e4e6eb;
+            transition: 0.2s;
+        }
+
+        .logout-btn:hover {
+            background: #3a3b3c;
+        }
+
+        /* MAIN AREA */
+        .main-container {
+            flex: 1;
+            background: #18191a;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .top-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid #2f3336;
+        }
+
+        .page-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin: 0;
+            color: #e4e6eb;
+        }
+
+        /* MEDIA GRID */
+        .media-grid {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            overflow-y: auto;
+        }
+
+        .media-card {
+            background: #242526;
+            border-radius: 16px;
+            border: 1px solid #3a3b3c;
+            overflow: hidden;
+            transition: 0.2s;
+            cursor: pointer;
+        }
+
+        .media-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            border-color: #667eea;
+        }
+
+        .media-card img,
+        .media-card video {
+            width: 100%;
+            height: 220px;
+            object-fit: cover;
+        }
+
+        .media-info {
+            padding: 12px;
+        }
+
+        .media-name {
+            font-size: 15px;
+            font-weight: 600;
+            color: #e4e6eb;
+            margin-bottom: 6px;
+        }
+
+        .media-caption {
+            font-size: 13px;
+            color: #b0b3b8;
+            margin-bottom: 6px;
+        }
+
+        .media-meta {
+            font-size: 12px;
+            color: #8b8d91;
+        }
+
+        .empty-message {
+            font-size: 18px;
+            color: #8b8d91;
+            text-align: center;
+            margin-top: 50px;
+        }
+
+        /* PREVIEW MODAL */
+        .preview-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .preview-modal img,
+        .preview-modal video {
+            max-width: 90%;
+            max-height: 90%;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.7);
+        }
+
+        .preview-close {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            font-size: 40px;
+            color: white;
+            cursor: pointer;
+        }
+
+        .media-actions {
+            margin-top: 12px;
+            display: flex;
+            gap: 8px;
+        }
+
+        .delete-btn {
+            flex: 1;
+            padding: 8px;
+            background: #dc2626;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .delete-btn:hover {
+            background: #b91c1c;
+        }
+
+        .delete-btn:active {
+            transform: scale(0.98);
+        }
+    </style>
+
+</head>
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+        <div class="sidebar-header">
+            <div class="sidebar-logo">SocialSync</div>
+        </div>
+
+        <ul class="menu">
+            <li><a class="menu-link" href="index.html">🏠 Home</a></li>
+            <li><a class="menu-link active" href="media.html">🖼️ Media</a></li>
+        </ul>
+
+        <div class="sidebar-footer">
+            <button class="logout-btn">Logout</button>
+        </div>
+    </aside>
+
+    <main class="main-container">
+        <div class="top-header">
+            <h2 class="page-title">My Posts</h2>
+        </div>
+
+        <div id="mediaGrid" class="media-grid"></div>
+
+        <div id="emptyMessage" class="empty-message" style="display:none;">
+            You didn't post anything yet 😔
+        </div>
+    </main>
+
+    <!-- POST DETAIL MODAL -->
+    <div id="postDetailModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); z-index:10000; align-items:center; justify-content:center; flex-direction:column;">
+        <button onclick="closePostDetail()" style="position:absolute; top:20px; right:30px; background:none; border:none; color:white; font-size:40px; cursor:pointer;">×</button>
+        <div id="postDetailContent" style="background:#242526; border-radius:12px; max-width:700px; width:90%; max-height:85vh; overflow:auto; padding:20px; color:#e4e6eb;"></div>
+    </div>
+
+</div>
+
+<!-- PREVIEW MODAL -->
+<div id="previewModal" class="preview-modal" onclick="closePreview()">
+    <span class="preview-close">&times;</span>
+    <div id="previewContent"></div>
+</div>
+
+<script>
+    const token = sessionStorage.getItem("token");
+    const API_URL = `http://${window.location.hostname}:3000`;
+    let currentUser = null;
+
+    // Get current user data
+    async function getCurrentUser() {
+        try {
+            console.log("📥 Getting current user...");
+            const response = await fetch(`${API_URL}/api/users/me`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            console.log("📡 User response status:", response.status);
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || "Failed to get user");
+            }
+            
+            currentUser = await response.json();
+            console.log("✅ Current user loaded:", currentUser);
+            return currentUser;
+        } catch (error) {
+            console.error("❌ Error getting current user:", error);
+            return null;
+        }
+    }
+
+    async function deletePost(postId) {
+        if (!confirm("Are you sure you want to delete this post?")) return;
+        
+        try {
+            console.log("🗑️ Deleting post:", postId);
+            const response = await fetch(`${API_URL}/api/posts/${postId}`, {
+                method: "DELETE",
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.message || "Failed to delete post");
+            }
+
+            console.log("✅ Post deleted successfully");
+            
+            // Remove from UI immediately
+            const cardElement = document.querySelector(`[data-post-id="${postId}"]`);
+            if (cardElement) {
+                cardElement.style.opacity = "0";
+                cardElement.style.transform = "scale(0.8)";
+                setTimeout(() => cardElement.remove(), 300);
+            }
+            
+            // Close modal
+            closePostDetail();
+            
+            // Check if grid is empty
+            const remainingCards = document.querySelectorAll(".media-card");
+            if (remainingCards.length === 0) {
+                document.getElementById("emptyMessage").style.display = "block";
+                document.getElementById("emptyMessage").textContent = "You didn't post anything yet 😔";
+            }
+        } catch (error) {
+            console.error("❌ Delete error:", error);
+            alert(`Failed to delete post: ${error.message}`);
+        }
+    }
+
+    async function loadPosts() {
+        try {
+            console.log("🔄 Starting loadPosts...");
+            
+            // Get current user first
+            if (!currentUser) {
+                console.log("ℹ️  Current user not loaded, fetching...");
+                await getCurrentUser();
+            }
+
+            const userId = currentUser?._id || currentUser?.id;
+            if (!userId) {
+                console.error("❌ User not logged in:", currentUser);
+                document.getElementById("emptyMessage").style.display = "block";
+                document.getElementById("emptyMessage").textContent = "User not logged in";
+                return;
+            }
+
+            console.log("👤 Loading posts for user:", userId);
+            console.log("🔗 API endpoint: " + `${API_URL}/api/users/${userId}/posts`);
+
+            // Fetch user's posts
+            const response = await fetch(`${API_URL}/api/users/${userId}/posts`, {
+                headers: { "Authorization": `Bearer ${token}` }
+            });
+            
+            console.log("📡 Response status:", response.status);
+            
+            if (!response.ok) {
+                const error = await response.json();
+                console.error("❌ API error:", error);
+                throw new Error(error.message || error.error || "Failed to load posts");
+            }
+            
+            const data = await response.json();
+            console.log("📦 Response data structure:", data);
+            
+            // Backend returns array directly, not wrapped in {posts: ...}
+            const posts = Array.isArray(data) ? data : (data.posts || []);
+            console.log("✅ Posts loaded:", posts.length, "posts found");
+
+            const grid = document.getElementById("mediaGrid");
+            const empty = document.getElementById("emptyMessage");
+
+            grid.innerHTML = "";
+
+            if (posts.length === 0) {
+                empty.style.display = "block";
+                return;
+            }
+
+            empty.style.display = "none";
+
+            posts.forEach(post => {
+                const card = document.createElement("div");
+                card.className = "media-card";
+                card.setAttribute("data-post-id", post.id);
+
+                let mediaContent = "";
+                let hasImage = false;
+
+                if (post.mediaUrl) {
+                    mediaContent = `<img src="${post.mediaUrl}" alt="Post" onerror="this.style.display='none';">`;
+                    hasImage = true;
+                } else {
+                    // Show beautiful text preview if no image
+                    const textPreview = post.content.substring(0, 120);
+                    mediaContent = `<div style="width:100%; height:220px; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); display:flex; align-items:center; justify-content:center; padding:20px; text-align:center; word-break:break-word; font-size:18px; font-weight:500; color:#fff; line-height:1.6; box-shadow:inset 0 0 20px rgba(0,0,0,0.2);">${textPreview}</div>`;
+                }
+
+                const postDate = post.timestamp || "Just now";
+                
+                // Escape quotes in content for onclick
+                const safeContent = post.content.replace(/'/g, "\\'");
+                const safeMediaUrl = (post.mediaUrl || '').replace(/'/g, "\\'");
+
+                // Escape avatar too
+                const safeAvatar = (post.avatar || '👤').replace(/'/g, "\\'").replace(/"/g, '\\"');
+
+                card.innerHTML = `
+                    <div onclick="openPostDetail('${post.id}', '${post.displayName}', '${post.username}', '${safeAvatar}', '${safeContent}', '${safeMediaUrl}', ${post.likes}, ${post.comments})" style="cursor:pointer; position:relative;">
+                        ${mediaContent}
+                        <button onclick="event.stopPropagation(); deletePost('${post.id}')" style="position:absolute; top:8px; right:8px; background:#dc2626; color:white; border:none; border-radius:50%; width:36px; height:36px; font-size:18px; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:0.2s; hover:background:#b91c1c;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">🗑️</button>
+                    </div>
+                    <div class="media-info">
+                        <div class="media-name">${post.displayName || post.username}</div>
+                        <div class="media-caption" style="height:40px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;">${post.content}</div>
+                        <div class="media-meta">${postDate}</div>
+                        <div style="display:flex; gap:8px; margin-top:8px;">
+                            <span style="font-size:12px; color:#667eea;">❤️ ${post.likes}</span>
+                            <span style="font-size:12px; color:#667eea;">💬 ${post.comments}</span>
+                        </div>
+                    </div>
+                `;
+
+                grid.appendChild(card);
+            });
+        } catch (error) {
+            console.error("❌ Error loading posts:", error);
+            console.error("Error message:", error.message);
+            console.error("Error stack:", error.stack);
+            document.getElementById("emptyMessage").style.display = "block";
+            document.getElementById("emptyMessage").textContent = `Failed to load posts: ${error.message}`;
+        }
+    }
+
+    function openPostDetail(postId, displayName, username, avatar, content, mediaUrl, likes, comments) {
+        const modal = document.getElementById("postDetailModal");
+        const detailContent = document.getElementById("postDetailContent");
+
+        let mediaDisplay = "";
+        if (mediaUrl) {
+            mediaDisplay = `
+                <div style="margin-bottom:20px; border-radius:12px; overflow:hidden; background:#18191a; max-height:400px;">
+                    <img src="${mediaUrl}" style="width:100%; height:auto; max-height:400px; object-fit:cover;" onerror="this.alt='Image unavailable';" alt="Post media">
+                </div>
+            `;
+        }
+
+        detailContent.innerHTML = `
+            <div style="display:flex; gap:12px; margin-bottom:20px; align-items:center;">
+                <div style="width:50px; height:50px; border-radius:50%; background:linear-gradient(135deg,#667eea 0%,#764ba2 100%); display:flex; align-items:center; justify-content:center; font-size:24px; overflow:hidden; flex-shrink:0;">
+                    ${avatar && avatar !== '👤' ? `<img src="${avatar}" style="width:100%; height:100%; object-fit:cover;">` : avatar}
+                </div>
+                <div>
+                    <div style="font-weight:600; color:#e4e6eb; font-size:15px;">${displayName}</div>
+                    <div style="color:#8b8d91; font-size:13px;">@${username}</div>
+                </div>
+            </div>
+
+            ${mediaDisplay}
+
+            <div style="background:#18191a; padding:15px; border-radius:8px; margin-bottom:15px; word-break:break-word; line-height:1.5;">
+                ${content}
+            </div>
+
+            <div style="display:flex; gap:30px; padding-top:15px; border-top:1px solid #3a3b3c; margin-bottom:20px;">
+                <div>
+                    <div style="font-weight:600; font-size:16px; color:#e4e6eb;">${likes}</div>
+                    <div style="font-size:12px; color:#8b8d91;">Likes</div>
+                </div>
+                <div>
+                    <div style="font-weight:600; font-size:16px; color:#e4e6eb;">${comments}</div>
+                    <div style="font-size:12px; color:#8b8d91;">Comments</div>
+                </div>
+            </div>
+            
+            <button onclick="deletePost('${postId}')" style="width:100%; padding:10px; background:#dc2626; border:none; border-radius:8px; color:white; font-weight:600; cursor:pointer; transition:0.2s;" onmouseover="this.style.background='#b91c1c'" onmouseout="this.style.background='#dc2626'">🗑️ Delete Post</button>
+        `;
+
+        modal.style.display = "flex";
+    }
+
+    function closePostDetail() {
+        document.getElementById("postDetailModal").style.display = "none";
+    }
+
+    // Close modal on outside click
+    document.getElementById("postDetailModal").addEventListener("click", function(e) {
+        if (e.target === this) {
+            closePostDetail();
+        }
+    });
+
+    function openPreview(url, type) {
+        const modal = document.getElementById("previewModal");
+        const content = document.getElementById("previewContent");
+
+        if (type === "image") {
+            content.innerHTML = `<img src="${url}">`;
+        } else {
+            content.innerHTML = `<video src="${url}" controls autoplay></video>`;
+        }
+
+        modal.style.display = "flex";
+    }
+
+    function closePreview() {
+        document.getElementById("previewModal").style.display = "none";
+        document.getElementById("previewContent").innerHTML = "";
+    }
+
+    // Logout functionality
+    document.querySelector(".logout-btn").addEventListener("click", () => {
+        sessionStorage.removeItem("token");
+        window.location.href = "login.html";
+    });
+
+    // Load posts on page load
+    document.addEventListener("DOMContentLoaded", () => {
+        loadPosts();
+    });
+</script>
+
+</body>
+</html>

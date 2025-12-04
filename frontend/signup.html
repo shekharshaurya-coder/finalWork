@@ -1,0 +1,678 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>SocialSync — Sign Up</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      :root {
+        --bg: #0f0f11;
+        --panel: #151516;
+        --muted: #9b9b9f;
+        --accent: #7b6ef6;
+        --accent-dark: #6a5ee5;
+        --card: #171718;
+        --border: rgba(255, 255, 255, 0.03);
+        --border-hover: rgba(255, 255, 255, 0.08);
+        --error: #ff7979;
+        --success: #51cf66;
+        font-family: Inter, system-ui, -apple-system, sans-serif;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #e9e9eb;
+        overflow-x: hidden;
+      }
+
+      .card {
+        width: 820px;
+        max-width: 95%;
+        background: var(--card);
+        border-radius: 16px;
+        padding: 40px;
+        border: 1px solid var(--border);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+          0 0 40px rgba(123, 110, 246, 0.05);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        animation: slideIn 0.4s ease-out;
+      }
+
+      @keyframes slideIn {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      .card:hover {
+        box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5),
+          0 0 50px rgba(123, 110, 246, 0.1);
+      }
+
+      .card-header {
+        margin-bottom: 32px;
+      }
+
+      .card-title {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0;
+        background: linear-gradient(135deg, #fff 0%, var(--muted) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+
+      .card-sub {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 8px;
+        letter-spacing: 0.3px;
+      }
+
+      .form-wrap {
+        display: flex;
+        gap: 50px;
+        align-items: flex-start;
+      }
+
+      .left-illustration {
+        width: 240px;
+        text-align: center;
+        flex-shrink: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .illus-circle {
+        width: 180px;
+        height: 180px;
+        border-radius: 50%;
+        overflow: hidden;
+        background: linear-gradient(135deg, var(--accent) 0%, #9d7ff6 100%);
+        position: relative;
+        box-shadow: 0 0 40px rgba(123, 110, 246, 0.3);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .illus-circle:hover {
+        transform: scale(1.05) rotate(-5deg);
+        box-shadow: 0 0 60px rgba(123, 110, 246, 0.5);
+      }
+
+      .illus-circle img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .illus-text {
+        font-size: 13px;
+        color: var(--muted);
+        text-align: center;
+        line-height: 1.5;
+      }
+
+      .form {
+        flex: 1;
+      }
+
+      .form-group {
+        margin-bottom: 18px;
+      }
+
+      label {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      input {
+        width: 100%;
+        padding: 14px 16px;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        color: #fff;
+        font-size: 15px;
+        transition: all 0.2s ease;
+        font-family: inherit;
+      }
+
+      input:hover {
+        border-color: var(--border-hover);
+        background: rgba(255, 255, 255, 0.02);
+      }
+
+      input:focus {
+        outline: none;
+        border-color: var(--accent);
+        background: rgba(123, 110, 246, 0.05);
+        box-shadow: 0 0 0 3px rgba(123, 110, 246, 0.1);
+      }
+
+      input::placeholder {
+        color: #555;
+      }
+
+      .password-wrapper {
+        position: relative;
+      }
+
+      .toggle-pass {
+        position: absolute;
+        right: 14px;
+        top: 50%;
+        transform: translateY(-50%);
+        cursor: pointer;
+        font-size: 18px;
+        transition: transform 0.2s ease;
+        user-select: none;
+      }
+
+      .toggle-pass:hover {
+        transform: translateY(-50%) scale(1.2);
+      }
+
+      .password-requirements {
+        margin-top: 10px;
+        font-size: 12px;
+        color: var(--muted);
+        padding: 12px 14px;
+        background: rgba(123, 110, 246, 0.08);
+        border: 1px solid rgba(123, 110, 246, 0.15);
+        border-radius: 8px;
+        display: none;
+        animation: slideIn 0.2s ease-out;
+      }
+
+      .password-requirements.show {
+        display: block;
+      }
+
+      .requirement {
+        margin: 6px 0;
+        color: var(--muted);
+        transition: color 0.2s ease;
+      }
+
+      .requirement.met {
+        color: var(--success);
+      }
+
+      .actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+      }
+
+      .btn {
+        padding: 12px 20px;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 15px;
+        font-weight: 600;
+        transition: all 0.2s ease;
+        border: none;
+        font-family: inherit;
+        flex: 1;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+      }
+
+      .btn-primary {
+        background: linear-gradient(
+          135deg,
+          var(--accent) 0%,
+          var(--accent-dark) 100%
+        );
+        color: #fff;
+        border: none;
+        box-shadow: 0 4px 15px rgba(123, 110, 246, 0.3);
+      }
+
+      .btn-primary:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(123, 110, 246, 0.4);
+      }
+
+      .btn-primary:active:not(:disabled) {
+        transform: translateY(0);
+      }
+
+      .btn-primary:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .btn-ghost {
+        background: transparent;
+        border: 1.5px solid var(--border);
+        color: var(--muted);
+        text-decoration: none;
+      }
+
+      .btn-ghost:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+        background: rgba(123, 110, 246, 0.05);
+      }
+
+      .error {
+        color: var(--error);
+        margin-top: 14px;
+        font-size: 13px;
+        display: none;
+        padding: 10px 12px;
+        background: rgba(255, 121, 121, 0.1);
+        border: 1px solid rgba(255, 121, 121, 0.2);
+        border-radius: 8px;
+        animation: shake 0.3s ease;
+      }
+
+      .success {
+        color: var(--success);
+        margin-top: 14px;
+        font-size: 13px;
+        display: none;
+        padding: 10px 12px;
+        background: rgba(81, 207, 102, 0.1);
+        border: 1px solid rgba(81, 207, 102, 0.2);
+        border-radius: 8px;
+        animation: slideIn 0.3s ease;
+      }
+
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-5px);
+        }
+        75% {
+          transform: translateX(5px);
+        }
+      }
+
+      .helper {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--muted);
+        display: none;
+        text-align: center;
+      }
+
+      .helper.show {
+        display: block;
+        animation: pulse 1.5s infinite;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.6;
+        }
+      }
+
+      /* Responsive Design */
+      @media (max-width: 768px) {
+        .card {
+          padding: 32px 24px;
+          margin: 16px;
+        }
+
+        .card-title {
+          font-size: 24px;
+        }
+
+        .form-wrap {
+          flex-direction: column;
+          gap: 30px;
+        }
+
+        .left-illustration {
+          width: 100%;
+        }
+
+        .illus-circle {
+          width: 150px;
+          height: 150px;
+        }
+
+        .actions {
+          flex-direction: column;
+        }
+
+        .btn {
+          width: 100%;
+        }
+      }
+
+      @media (max-width: 480px) {
+        html,
+        body {
+          padding: 16px;
+        }
+
+        .card {
+          padding: 24px 16px;
+          border-radius: 12px;
+        }
+
+        .card-header {
+          margin-bottom: 24px;
+        }
+
+        .card-title {
+          font-size: 20px;
+        }
+
+        .card-sub {
+          font-size: 13px;
+        }
+
+        .illus-circle {
+          width: 120px;
+          height: 120px;
+        }
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+
+        label {
+          font-size: 11px;
+        }
+
+        input {
+          padding: 12px 14px;
+          font-size: 14px;
+        }
+
+        .btn {
+          padding: 11px 16px;
+          font-size: 14px;
+        }
+
+        .toggle-pass {
+          right: 10px;
+          font-size: 16px;
+        }
+
+        .password-requirements {
+          font-size: 11px;
+          padding: 10px 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <section class="card">
+      <div class="card-header">
+        <h1 class="card-title">Join SocialSync</h1>
+        <p class="card-sub">Create your account to get started</p>
+      </div>
+
+      <div class="form-wrap">
+        <div class="left-illustration">
+          <div class="illus-circle">
+            <img src="monkey.jpg" alt="Monkey Cartoon" />
+          </div>
+          <p class="illus-text">Join thousands of users sharing their thoughts and connecting with others.</p>
+        </div>
+
+        <form id="signupForm" class="form" onsubmit="return false;">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input id="email" type="email" required placeholder="you@domain.com" />
+          </div>
+
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input
+              id="username"
+              type="text"
+              required
+              placeholder="johndoe"
+              pattern="[a-zA-Z0-9_]+"
+              title="Only letters, numbers and underscores"
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="password">Password</label>
+            <div class="password-wrapper">
+              <input id="password" type="password" required placeholder="Enter your password" />
+              <span id="togglePass" class="toggle-pass">👁️</span>
+            </div>
+            <div class="password-requirements" id="passwordReqs">
+              <div class="requirement" id="req-length">• At least 6 characters</div>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="confirmPassword">Confirm Password</label>
+            <input id="confirmPassword" type="password" required placeholder="Confirm your password" />
+          </div>
+
+          <div class="actions">
+            <button id="submitBtn" class="btn btn-primary" type="button">Create Account</button>
+            <a href="/login.html" class="btn btn-ghost">Sign In</a>
+          </div>
+
+          <div id="error" class="error"></div>
+          <div id="success" class="success"></div>
+          <div id="loading" class="helper">Creating your account…</div>
+        </form>
+      </div>
+    <!-- </section>
+        
+          </div>
+
+          <div class="actions">
+            <button id="submitBtn" class="btn btn-primary" type="button">
+              Create Account
+            </button>
+            <a href="/login.html" class="btn btn-ghost">Sign In</a>
+          </div>
+
+          <div id="error" class="error"></div>
+          <div id="success" class="success"></div>
+          <div id="loading" class="helper" style="display: none">
+            Creating your account…
+          </div>
+        </form>
+      </div>
+    </section> -->
+
+    <script>
+      const submitBtn = document.getElementById("submitBtn");
+      const errorEl = document.getElementById("error");
+      const successEl = document.getElementById("success");
+      const loadingEl = document.getElementById("loading");
+      const passwordInput = document.getElementById("password");
+      const passwordReqs = document.getElementById("passwordReqs");
+
+      function showError(msg) {
+        errorEl.style.display = "block";
+        errorEl.textContent = msg;
+        successEl.style.display = "none";
+        loadingEl.classList.remove("show");
+        loadingEl.style.display = "none";
+      }
+
+      function showSuccess(msg) {
+        successEl.style.display = "block";
+        successEl.textContent = msg;
+        errorEl.style.display = "none";
+        loadingEl.classList.remove("show");
+        loadingEl.style.display = "none";
+      }
+
+      function clearMessages() {
+        errorEl.style.display = "none";
+        successEl.style.display = "none";
+      }
+
+      // Password validation
+      passwordInput.addEventListener("focus", () => {
+        passwordReqs.classList.add("show");
+      });
+
+      passwordInput.addEventListener("input", () => {
+        const password = passwordInput.value;
+        const lengthReq = document.getElementById("req-length");
+
+        if (password.length >= 6) {
+          lengthReq.classList.add("met");
+        } else {
+          lengthReq.classList.remove("met");
+        }
+      });
+
+      passwordInput.addEventListener("blur", () => {
+        setTimeout(() => {
+          passwordReqs.classList.remove("show");
+        }, 200);
+      });
+
+      // Password toggle
+      const togglePass = document.getElementById("togglePass");
+      if (togglePass && passwordInput) {
+        togglePass.addEventListener("click", () => {
+          const isPwd = passwordInput.type === "password";
+          passwordInput.type = isPwd ? "text" : "password";
+          togglePass.textContent = isPwd ? "🙈" : "👁️";
+          passwordInput.focus();
+        });
+      }
+
+      // Form submission
+      submitBtn.addEventListener("click", async () => {
+        clearMessages();
+
+        const email = document.getElementById("email").value.trim();
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+        const confirmPassword =
+          document.getElementById("confirmPassword").value;
+
+        // Validation
+        if (!email || !username || !password || !confirmPassword) {
+          showError("All fields are required");
+          return;
+        }
+
+        if (!email.includes("@")) {
+          showError("Please enter a valid email");
+          return;
+        }
+
+        if (username.length < 3) {
+          showError("Username must be at least 3 characters");
+          return;
+        }
+
+        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+          showError(
+            "Username can only contain letters, numbers and underscores"
+          );
+          return;
+        }
+
+        if (password.length < 6) {
+          showError("Password must be at least 6 characters");
+          return;
+        }
+
+        if (password !== confirmPassword) {
+          showError("Passwords do not match");
+          return;
+        }
+
+        loadingEl.classList.add("show");
+        loadingEl.style.display = "block";
+        submitBtn.disabled = true;
+
+        try {
+          const response = await fetch(
+            `/api/auth/signup`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ email, username, password }),
+            }
+          );
+
+          const data = await response.json();
+
+          if (response.status === 201) {
+            // Store token and redirect
+            if (data.token) {
+              sessionStorage.setItem("token", data.token);
+            }
+
+            showSuccess("Account created successfully! Redirecting...");
+
+            setTimeout(() => {
+              window.location.href = "/index.html";
+            }, 1500);
+            return;
+          }
+
+          if (response.status === 400) {
+            showError(data.message || "Username or email already taken");
+            return;
+          }
+
+          showError(data.message || "Signup failed. Please try again.");
+        } catch (err) {
+          console.error(err);
+          showError("Network error. Please check your connection.");
+        } finally {
+          loadingEl.style.display = "none";
+          submitBtn.disabled = false;
+        }
+      });
+
+      // Allow Enter key to submit
+      document
+        .getElementById("signupForm")
+        .addEventListener("keypress", (e) => {
+          if (e.key === "Enter") {
+            submitBtn.click();
+          }
+        });
+    </script>
+  </body>
+</html>

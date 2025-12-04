@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SocialSync | Analytics</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="analytics.css" />
+  </head>
+  <body>
+    <div class="app">
+      <!-- ==================== LEFT SIDEBAR ==================== -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-logo">SocialSync</div>
+        </div>
+
+        <!-- Filled dynamically from backend -->
+        <div class="account-section">
+          <div class="account-avatar">👤</div>
+          <div class="account-info">
+            <h3 id="account-name"></h3>
+            <p id="account-username"></p>
+          </div>
+        </div>
+
+        <ul class="menu">
+          <li class="menu-item">
+            <a class="menu-link" href="/index.html">🏠 Home</a>
+          </li>
+          <!-- <li class="menu-item">
+                    <a class="menu-link" onclick="showPostModal()">➕ Post</a>
+                </li> -->
+          <li class="menu-item">
+            <a class="menu-link active" onclick="return false">📊 Analytics</a>
+          </li>
+          <li class="menu-item">
+            <a class="menu-link" href="/profile.html">👤 Profile</a>
+          </li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <button class="logout-btn">Logout</button>
+        </div>
+      </aside>
+
+      <!-- ==================== MAIN CONTENT ==================== -->
+      <main class="main-container analytics-page">
+        <h1 class="analytics-title">Analytics Dashboard</h1>
+
+        <!-- Toggle -->
+        <div class="analytics-toggle">
+          <button class="toggle-btn active" onclick="changeMode('day')">
+            Day
+          </button>
+          <button class="toggle-btn" onclick="changeMode('week')">Week</button>
+          <button class="toggle-btn" onclick="changeMode('month')">
+            Month
+          </button>
+        </div>
+
+        <!-- Likes Chart -->
+        <div class="chart-card">
+          <h3>Total Likes Over Time</h3>
+          <canvas id="likesChart"></canvas>
+        </div>
+
+        <!-- Sentiment Chart -->
+        <div class="chart-card">
+          <h3>Sentiment Analysis</h3>
+          <canvas id="sentimentChart" class="small-chart"></canvas>
+        </div>
+
+        <!-- Info Section -->
+        <div class="info-grid">
+          <div class="info-card">
+            <h3>Top Post</h3>
+            <p id="topPostText">Loading...</p>
+          </div>
+
+          <div class="info-card">
+            <h3>Trending Hashtag</h3>
+            <p id="trendingTagText">Loading...</p>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="analytics-script.js"></script>
+  </body>
+</html>

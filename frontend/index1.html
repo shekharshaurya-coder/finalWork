@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SocialSync</title>
+    <link rel="stylesheet" href="styles.css">
+     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+      /* Minimal safety: ensure content sections behave correctly even if your styles.css misses it */
+      .content { display: none; }
+      .content.active { display: block; }
+      .toggle-btn.active { font-weight:700; }
+      /* Make sure chat window column layout doesn't collapse when display:flex is set by JS */
+      #chatWindow { display: none; flex-direction: column; gap: 8px; }
+      /* Basic style for global input area so it sits visually as a footer inside messages view */
+      .chat-input-container { display: flex; gap: 8px; align-items: center; padding: 10px; }
+      .chat-input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background:#121212; color:#fff; }
+      .send-message-btn { padding: 8px 12px; border-radius:8px; border:none; cursor:pointer; background:#667eea; color:#fff; }
+    </style>
+</head>
+<body>
+    <div class="app">
+
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">SocialSync</div>
+            </div>
+
+            <div class="account-section" id="account-section">
+                <div class="account-avatar">👤</div>
+                <div class="account-info">
+                    <h3 id="account-name"></h3>
+                    <p id="account-username"></p>
+                    <div style="display:flex;gap:15px;margin-top:10px;font-size:13px;">
+                        <div onclick="showMyFollowers()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                            <span id="my-followers-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                            <span> followers</span>
+                        </div>
+                        <div onclick="showMyFollowing()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                            <span id="my-following-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                            <span> following</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="menu">
+                <li class="menu-item">
+                    <a class="menu-link" onclick="showSearchModal()">🔍 Search</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link active" onclick="switchToHome(event)">🏠 Home</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="showPostModal()">➕ Post</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="switchToNotifications(event)">
+                        🔔 Notifications
+                        <span class="notification-badge" id="notificationBadge" style="display:none;"></span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/analytics.html">📊 Analytics</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/profile.html">👤 Profile</a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-container">
+            <div class="top-header">
+                <div class="toggle-switch">
+                    <!-- pass event so JS can add .active correctly -->
+                    <button class="toggle-btn active" onclick="showFeed(event)">📱 Feed</button>
+                    <button class="toggle-btn" onclick="showMessages(event)">💬 Messages</button>
+                </div>
+            </div>
+
+            <!-- FEED VIEW -->
+            <div class="content active" id="feed-view">
+                <div class="stories" id="stories-container"></div>
+                <div id="feed-posts"></div>
+            </div>
+
+            <!-- NOTIFICATIONS VIEW -->
+            <div class="content" id="notifications-view">
+                <div class="notifications-header">
+                    <h2 style="padding:20px;margin:0;font-size:18px;color:#e4e6eb;">Notifications</h2>
+                </div>
+                <div id="notifications-list"></div>
+            </div>
+
+            <!-- MESSAGES VIEW (single clean block) -->
+            <!-- MESSAGES VIEW -->
+<div class="content" id="messages-view">
+    <div class="messages-header">
+        <input type="text" id="messageSearchInput"
+               placeholder="Search users to message..."
+               oninput="searchUsersToMessage()">
+    </div>
+
+    <!-- Search results -->
+    <div id="messageSearchResults" style="display:none;"></div>
+
+    <!-- Conversations list -->
+    <div id="conversationsList"></div>
+
+</div>
+
+<!-- CHAT WINDOW (SEPARATE FROM messages-view) -->
+<div id="chatWindow" style="display:none;">
+    <!-- CHAT HEADER (replace existing chat-header block) -->
+<div class="chat-header" style="display:flex;align-items:center;gap:12px;justify-content:space-between;padding:12px;border-bottom:1px solid #2f3336;">
+    <div style="display:flex;align-items:center;gap:12px;">
+        <button class="back-to-conversations" onclick="backToConversations()">← Back</button>
+        <div class="chat-user-info" style="display:flex;align-items:center;gap:12px;">
+            <div class="chat-user-avatar" id="chatUserAvatar" style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;">👤</div>
+            <div>
+                <div class="chat-user-name" id="chatUserName"></div>
+                <div class="chat-user-username" id="chatUsername" style="font-size:12px;color:#8b8d91;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Chat button -->
+    <div style="display:flex;gap:8px;align-items:center;">
+        <button class="close-chat-btn" onclick="closeChat()" style="padding:8px 12px;border-radius:8px;border:none;background:#2f3336;color:#e4e6eb;cursor:pointer;font-weight:600;">
+            Close Chat
+        </button>
+    </div>
+</div>
+
+    </div>
+
+    <div class="chat-messages" id="chatMessages"></div>
+</div>
+
+<!-- INPUT BAR -->
+<div id="globalChatInput" class="chat-input-container" style="display:none;">
+    <input id="messageInput" class="chat-input" placeholder="Type a message…">
+    <button class="send-message-btn" onclick="sendMessage()">Send</button>
+</div>
+
+        </main>
+
+        <!-- SEARCH MODAL -->
+        <div class="modal-overlay" id="searchModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Search Users</div>
+                    <button class="modal-close" onclick="closeSearchModal()">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            class="form-input" 
+                            placeholder="Search by username..."
+                            oninput="searchUsers()"
+                        >
+                    </div>
+
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- POST MODAL -->
+        <div class="modal-overlay" id="postModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Create Post</div>
+                    <button class="modal-close" onclick="closePostModal()">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="post-type-selector">
+                        <button class="type-btn active" onclick="selectPostType('text', event)">📝 Text Post</button>
+                        <button class="type-btn" onclick="selectPostType('file', event)">📎 File Post</button>
+
+                    </div>
+
+                    <div class="post-form active" id="textForm">
+                        <div class="form-group">
+                            <label class="form-label">What's on your mind?</label>
+                            <textarea id="textPostInput" class="form-textarea" placeholder="Share your thoughts..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="post-form" id="fileForm">
+                        <div class="form-group">
+                            <label class="form-label">Upload File</label>
+                            <label class="file-upload-area">
+                                <input id="fileUploadInput" type="file" accept="image/*,video/*">
+                                <div class="upload-icon">📎</div>
+                                <div class="upload-text">Click to upload or drag and drop</div>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Caption</label>
+                            <input id="fileCaptionInput" type="text" class="form-input" placeholder="Add a caption to your file...">
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn-cancel" onclick="closePostModal()">Cancel</button>
+                    <button class="btn-post" onclick="submitPost()">Post</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+   
+    <script src="script_fixed.js"></script>
+</body>
+</html>

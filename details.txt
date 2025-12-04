@@ -1,0 +1,4 @@
+shekhar ---
+npm install express mongoose dotenv bcryptjs jsonwebtoken redis cors ----- intalled 
+npm install multer joi express-rate-limit aws-sdk ---- insalled 
+whenever you clone it , in the terminal write npm install 

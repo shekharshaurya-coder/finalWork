@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>SocialSync</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+      /* Minimal safety: ensure content sections correctly even if styles.css misses it */
+      .content { display: none; }
+      .content.active { display: block; }
+      .toggle-btn.active { font-weight:700; }
+      /* Basic fallback styles */
+      .chat-input-container { display: flex; gap: 8px; align-items: center; padding: 10px; }
+      .chat-input { flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #333; background:#121212; color:#fff; }
+      .send-message-btn { padding: 8px 12px; border-radius:8px; border:none; cursor:pointer; background:#667eea; color:#fff; }
+      /* Sidebar messages button style (keeps theme) */
+      .menu-link.messages {
+        display:flex;
+        align-items:center;
+        gap:8px;
+      }
+      .menu-link.messages .badge {
+        margin-left:8px;
+        background:#667eea;
+        color:#fff;
+        padding:2px 8px;
+        border-radius:12px;
+        font-size:12px;
+        font-weight:600;
+      }
+    </style>
+</head>
+<body>
+        <script>
+            // DEBUG: print session token on page load to help diagnose immediate-logout
+            document.addEventListener('DOMContentLoaded', () => {
+                try {
+                    const t = sessionStorage.getItem('token');
+                    console.log('DEBUG: sessionStorage.token on index.html load ->', t ? ('[present] ' + (t.substring(0,30) + '...')) : '[absent]');
+                } catch (e) {
+                    console.warn('DEBUG: failed to read sessionStorage token', e);
+                }
+            });
+        </script>
+    <div class="app">
+
+        <!-- LEFT SIDEBAR -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">SocialSync</div>
+            </div>
+
+            <div class="account-section" id="account-section">
+                <div class="account-avatar">👤</div>
+                <div class="account-info">
+                    <h3 id="account-name"></h3>
+                    <p id="account-username"></p>
+                    <div style="display:flex;gap:15px;margin-top:10px;font-size:13px;">
+                        <div onclick="showMyFollowers()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                            <span id="my-followers-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                            <span> followers</span>
+                        </div>
+                        <div onclick="showMyFollowing()" style="cursor:pointer;color:#8b8d91;transition:0.2s;">
+                            <span id="my-following-count" style="font-weight:bold;color:#e4e6eb;">0</span>
+                            <span> following</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <ul class="menu">
+                <li class="menu-item">
+                    <a class="menu-link" onclick="showSearchModal()">🔍 Search</a>
+                </li>
+
+                <!-- MESSAGES BUTTON (redirects to standalone messages.html) -->
+                <li class="menu-item">
+                    <a class="menu-link messages" onclick="window.location.href='/messages.html'">💬 Messages <span class="badge" id="sidebarMessagesBadge" style="display:none;">0</span></a>
+                </li>
+
+                <li class="menu-item">
+                    <a class="menu-link active" onclick="switchToHome(event)">🏠 Home</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="showPostModal()">➕ Post</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" onclick="switchToNotifications(event)">
+                        🔔 Notifications
+                        <span class="notification-badge" id="notificationBadge" style="display:none;"></span>
+                    </a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/analytics.html">📊 Analytics</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/profile.html">👤 Profile</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/media.html">🖼️ My Posts</a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT -->
+        <main class="main-container">
+            <div class="top-header">
+                <div class="toggle-switch">
+                    <!-- Removed Messages toggle (messages moved to messages.html) -->
+                    <button class="toggle-btn active" onclick="showFeed(event)">📱 Feed</button>
+                </div>
+            </div>
+
+            <!-- FEED VIEW -->
+            <div class="content active" id="feed-view">
+                <div class="stories" id="stories-container"></div>
+                <div id="feed-posts"></div>
+            </div>
+
+            <!-- NOTIFICATIONS VIEW -->
+            <div class="content" id="notifications-view">
+                <div class="notifications-header">
+                    <h2 style="padding:20px;margin:0;font-size:18px;color:#e4e6eb;">Notifications</h2>
+                </div>
+                <div id="notifications-list"></div>
+            </div>
+
+            <!-- (Messages moved to standalone messages.html) -->
+
+        </main>
+
+        <!-- SEARCH MODAL -->
+        <div class="modal-overlay" id="searchModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Search Users</div>
+                    <button class="modal-close" onclick="closeSearchModal()">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="form-group">
+                        <input 
+                            type="text" 
+                            id="searchInput" 
+                            class="form-input" 
+                            placeholder="Search by username..."
+                            oninput="searchUsers()"
+                        >
+                    </div>
+
+                    <div id="searchResults" class="search-results"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- POST MODAL -->
+        <div class="modal-overlay" id="postModal">
+            <div class="modal">
+                <div class="modal-header">
+                    <div class="modal-title">Create Post</div>
+                    <button class="modal-close" onclick="closePostModal()">×</button>
+                </div>
+
+                <div class="modal-body">
+                    <div class="post-type-selector">
+                        <button class="type-btn active" onclick="selectPostType('text', event)">📝 Text Post</button>
+                        <button class="type-btn" onclick="selectPostType('file', event)">📎 File Post</button>
+                    </div>
+
+                    <div class="post-form active" id="textForm">
+                        <div class="form-group">
+                            <label class="form-label">What's on your mind?</label>
+                            <textarea id="textPostInput" class="form-textarea" placeholder="Share your thoughts..."></textarea>
+                        </div>
+                    </div>
+
+                    <div class="post-form" id="fileForm">
+                        <div class="form-group">
+                            <label class="form-label">Upload File</label>
+                            <label class="file-upload-area">
+                                <input id="fileUploadInput" type="file" accept="image/*,video/*">
+                                <div class="upload-icon">📎</div>
+                                <div class="upload-text">Click to upload or drag and drop</div>
+                            </label>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Caption</label>
+                            <input id="fileCaptionInput" type="text" class="form-input" placeholder="Add a caption to your file...">
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="modal-footer">
+                    <button class="btn-cancel" onclick="closePostModal()">Cancel</button>
+                    <button class="btn-post" onclick="submitPost()">Post</button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script src="script_fixed.js"></script>
+    <script>
+      // ✅ FIXED: Update sidebar badges with proper auth
+    
+  // ✅ FIXED: Update sidebar badges with proper auth
+  async function updateSidebarMessagesBadge() {
+    try {
+    // Get token from sessionStorage
+    let token = sessionStorage.getItem('token');
+      if (!token) {
+        console.log('No token found - skipping badge update');
+        return;
+      }
+      
+      // Clean token (remove any wrapping quotes)
+      token = token.replace(/^"(.*)"$/, '$1').trim();
+      
+      console.log('📊 Fetching notification and message counts...');
+      
+      // Get notification count
+      const notifRes = await fetch('/api/notifications/unread/count', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      // Get message count
+      const msgRes = await fetch('/api/messages/unread/count', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (notifRes.ok) {
+        const notifData = await notifRes.json();
+        console.log('✅ Notification count:', notifData.count);
+        
+        // Update notification badge (bell icon)
+        const notificationBadge = document.getElementById('notificationBadge');
+        if (notifData.count > 0 && notificationBadge) {
+          notificationBadge.textContent = notifData.count;
+          notificationBadge.style.display = 'inline-block';
+        } else if (notificationBadge) {
+          notificationBadge.style.display = 'none';
+        }
+      }
+      
+      if (msgRes.ok) {
+        const msgData = await msgRes.json();
+        console.log('✅ Message count:', msgData.count);
+        
+        // Update messages badge
+        const messagesBadge = document.getElementById('sidebarMessagesBadge');
+        if (msgData.count > 0 && messagesBadge) {
+          messagesBadge.textContent = msgData.count;
+          messagesBadge.style.display = 'inline-block';
+        } else if (messagesBadge) {
+          messagesBadge.style.display = 'none';
+        }
+      }
+      
+    } catch (e) {
+      console.error('Error updating badges:', e);
+    }
+  }
+  
+  // Run on page load
+  document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 Page loaded - updating badges...');
+    updateSidebarMessagesBadge();
+    
+    // Update every 30 seconds
+    setInterval(updateSidebarMessagesBadge, 30000);
+  });
+</script>
+    
+</body>
+</html>

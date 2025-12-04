@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - SocialSync</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0e27;
+            color: #e4e6eb;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .app {
+            display: flex;
+            height: 100vh;
+        }
+
+        /* ==================== SIDEBAR ==================== */
+        .sidebar {
+            width: 250px;
+            background: #1a1f3a;
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .sidebar-logo {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 30px;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .nav-btn {
+            padding: 12px 16px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #e4e6eb;
+            cursor: pointer;
+            text-align: left;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-btn:hover {
+            background: rgba(102, 126, 234, 0.1);
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .nav-btn.active {
+            background: rgba(102, 126, 234, 0.2);
+            border-color: #667eea;
+            color: #667eea;
+        }
+
+        .sidebar-footer {
+            margin-top: auto;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .admin-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: rgba(102, 126, 234, 0.1);
+            border-radius: 8px;
+        }
+
+        .admin-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+
+        .admin-name {
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        .logout-btn {
+            width: 100%;
+            padding: 10px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            color: #ef4444;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.3s;
+        }
+
+        .logout-btn:hover {
+            background: rgba(239, 68, 68, 0.2);
+            border-color: #ef4444;
+        }
+
+        /* ==================== MAIN CONTENT ==================== */
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .content-section {
+            display: none;
+        }
+
+        .content-section.active {
+            display: block;
+        }
+
+        .section-header {
+            margin-bottom: 30px;
+        }
+
+        .section-title {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .section-subtitle {
+            color: #9ca3af;
+            font-size: 14px;
+        }
+
+        /* ==================== STATS CARDS ==================== */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: #1a1f3a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+        }
+
+        .stat-label {
+            color: #9ca3af;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        .stat-value {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        /* ==================== TABLES ==================== */
+        .table-container {
+            background: #1a1f3a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .table-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .table-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            padding: 16px 20px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        th {
+            background: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .event-badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: rgba(102, 126, 234, 0.2);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 500;
+        }
+
+        .event-badge.high {
+            background: rgba(239, 68, 68, 0.2);
+            color: #ef4444;
+        }
+
+        .event-badge.medium {
+            background: rgba(251, 191, 36, 0.2);
+            color: #fbbf24;
+        }
+
+        .timestamp {
+            color: #9ca3af;
+            font-size: 13px;
+        }
+
+        .no-data {
+            text-align: center;
+            padding: 40px 20px;
+            color: #9ca3af;
+        }
+
+        /* ==================== FILTERS ==================== */
+        .filters {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .filter-group {
+            flex: 1;
+        }
+
+        .filter-label {
+            display: block;
+            font-size: 13px;
+            color: #9ca3af;
+            margin-bottom: 6px;
+        }
+
+        .filter-input,
+        .filter-select {
+            width: 100%;
+            padding: 10px 14px;
+            background: #1a1f3a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            color: #e4e6eb;
+            font-size: 14px;
+        }
+
+        .filter-input:focus,
+        .filter-select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .filter-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: 0.3s;
+        }
+
+        .filter-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        /* ==================== USERS GRID ==================== */
+        .users-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .user-card {
+            background: #1a1f3a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 20px;
+            transition: 0.3s;
+        }
+
+        .user-card:hover {
+            border-color: #667eea;
+            transform: translateY(-4px);
+        }
+
+        .user-card .name {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .user-card .username {
+            color: #9ca3af;
+            font-size: 14px;
+            margin-bottom: 16px;
+        }
+
+        .user-card .stats {
+            display: flex;
+            gap: 20px;
+        }
+
+        .user-card .stat-item {
+            flex: 1;
+            text-align: center;
+        }
+
+        .user-card .value {
+            font-size: 20px;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .user-card .label {
+            color: #9ca3af;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        /* ==================== ERROR MESSAGE ==================== */
+        .error-message {
+            display: none;
+            padding: 12px 16px;
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            color: #ef4444;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        /* ==================== KIBANA IFRAME ==================== */
+        .kibana-container {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            background: #1a1f3a;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .kibana-header {
+            padding: 15px 20px;
+            background: rgba(102, 126, 234, 0.1);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .refresh-btn {
+            padding: 8px 16px;
+            background: rgba(102, 126, 234, 0.2);
+            border: 1px solid #667eea;
+            border-radius: 6px;
+            color: #667eea;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: 0.3s;
+        }
+
+        .refresh-btn:hover {
+            background: rgba(102, 126, 234, 0.3);
+        }
+
+        #kibanaFrame {
+            width: 100%;
+            height: calc(100% - 50px);
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="app">
+        <!-- ==================== SIDEBAR ==================== -->
+        <aside class="sidebar">
+            <div class="sidebar-logo">🔐 SocialSync Admin</div>
+            
+            <nav class="sidebar-nav">
+                <button class="nav-btn active" onclick="showSection('overview')">
+                    📊 Overview
+                </button>
+                <button class="nav-btn" onclick="showSection('logs')">
+                    📋 Activity Logs
+                </button>
+                <button class="nav-btn" onclick="showSection('users')">
+                    👥 Users
+                </button>
+                <button class="nav-btn" onclick="showSection('analytics')">
+                    📈 Analytics
+                </button>
+                <button class="nav-btn" onclick="showSection('kibana')">
+                    🔍 Kibana Dashboard
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="admin-info">
+                    <div class="admin-avatar">A</div>
+                    <div class="admin-name" id="adminUsername">Admin</div>
+                </div>
+                <button class="logout-btn" onclick="logout()">
+                    🚪 Logout
+                </button>
+            </div>
+        </aside>
+
+        <!-- ==================== MAIN CONTENT ==================== -->
+        <main class="main-content">
+            <!-- OVERVIEW SECTION -->
+            <section id="overview-section" class="content-section active">
+                <div class="section-header">
+                    <h1 class="section-title">Dashboard Overview</h1>
+                    <p class="section-subtitle">Real-time platform statistics and activity</p>
+                </div>
+
+                <div class="error-message" id="overviewError"></div>
+
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-label">Total Users</div>
+                        <div class="stat-value" id="totalUsers">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Active Today</div>
+                        <div class="stat-value" id="activeToday">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Posts</div>
+                        <div class="stat-value" id="totalPosts">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Posts Today</div>
+                        <div class="stat-value" id="postsToday">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Total Engagement</div>
+                        <div class="stat-value" id="totalEngagement">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">High Priority Events</div>
+                        <div class="stat-value" id="highPriorityEvents">0</div>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2 class="table-title">Recent Activity Summary</h2>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event Type</th>
+                                <th>Count</th>
+                                <th>Trend</th>
+                            </tr>
+                        </thead>
+                        <tbody id="activitySummary">
+                            <tr><td colspan="3" class="no-data">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- LOGS SECTION -->
+            <section id="logs-section" class="content-section">
+                <div class="section-header">
+                    <h1 class="section-title">Activity Logs</h1>
+                    <p class="section-subtitle">Search and filter platform events</p>
+                </div>
+
+                <div class="error-message" id="logsError"></div>
+
+                <div class="filters">
+                    <div class="filter-group">
+                        <label class="filter-label">Event Type</label>
+                        <select class="filter-select" id="eventTypeFilter">
+                            <option value="">All Events</option>
+                            <option value="LOGIN">Login</option>
+                            <option value="SIGNUP">Signup</option>
+                            <option value="POST_CREATED">Post Created</option>
+                            <option value="COMMENT_ADDED">Comment Added</option>
+                            <option value="LIKE_ADDED">Like Added</option>
+                            <option value="USER_FOLLOWS">User Follows</option>
+                            <option value="MESSAGE_SENT">Message Sent</option>
+                            <option value="PROFILE_UPDATED">Profile Updated</option>
+                        </select>
+                    </div>
+                    <div class="filter-group">
+                        <label class="filter-label">Username</label>
+                        <input type="text" class="filter-input" id="usernameFilter" placeholder="Filter by username">
+                    </div>
+                    <div class="filter-group" style="display: flex; align-items: flex-end;">
+                        <button class="filter-btn" onclick="searchLogs()">🔍 Search</button>
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2 class="table-title">Event Logs</h2>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event</th>
+                                <th>Username</th>
+                                <th>Description</th>
+                                <th>Details</th>
+                                <th>Timestamp</th>
+                            </tr>
+                        </thead>
+                        <tbody id="logsTableBody">
+                            <tr><td colspan="5" class="no-data">Use filters to search logs</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- USERS SECTION -->
+            <section id="users-section" class="content-section">
+                <div class="section-header">
+                    <h1 class="section-title">User Management</h1>
+                    <p class="section-subtitle">View and manage platform users</p>
+                </div>
+
+                <div class="error-message" id="usersError"></div>
+
+                <div class="users-grid" id="usersGrid">
+                    <div class="no-data">Loading users...</div>
+                </div>
+            </section>
+
+            <!-- ANALYTICS SECTION -->
+            <section id="analytics-section" class="content-section">
+                <div class="section-header">
+                    <h1 class="section-title">Analytics</h1>
+                    <p class="section-subtitle">Platform metrics and insights</p>
+                </div>
+
+                <div class="table-container">
+                    <div class="table-header">
+                        <h2 class="table-title">Top Events Distribution</h2>
+                    </div>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Event Type</th>
+                                <th>Count</th>
+                                <th>Percentage</th>
+                            </tr>
+                        </thead>
+                        <tbody id="topEventsBody">
+                            <tr><td colspan="3" class="no-data">Loading...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- KIBANA SECTION -->
+            <section id="kibana-section" class="content-section">
+                <div class="section-header">
+                    <h1 class="section-title">Kibana Dashboard</h1>
+                    <p class="section-subtitle">Advanced analytics and visualization</p>
+                </div>
+
+                <div class="kibana-container">
+                    <div class="kibana-header">
+                        <span>📊 Kibana Analytics</span>
+                        <button class="refresh-btn" onclick="refreshKibana()">🔄 Refresh</button>
+                    </div>
+                    <iframe id="kibanaFrame" src="about:blank"></iframe>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>

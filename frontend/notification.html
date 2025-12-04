@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notifications - SocialSync</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">SocialSync</div>
+            </div>
+
+            <div class="account-section" id="account-section">
+                <div class="account-avatar">👤</div>
+                <div class="account-info">
+                    <h3 id="account-name"></h3>
+                    <p id="account-username"></p>
+                </div>
+            </div>
+
+            <ul class="menu">
+                <li class="menu-item">
+                    <a class="menu-link" href="/index.html">🏠 Home</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link active">🔔 Notifications</a>
+                </li>
+                <li class="menu-item">
+                    <a class="menu-link" href="/profile.html">👤 Profile</a>
+                </li>
+            </ul>
+
+            <div class="sidebar-footer">
+                <button class="logout-btn" onclick="logout()">Logout</button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-container">
+            <div class="top-header">
+                <h2 style="font-size:20px;color:#e4e6eb;margin:0;">Notifications</h2>
+            </div>
+
+            <div class="content active" style="display:block;">
+                <div id="notifications-list"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const token = sessionStorage.getItem('authToken');
+        if (!token) window.location.href = '/login.html';
+
+        async function fetchAPI(endpoint, options = {}) {
+            const defaultOptions = {
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                }
+            };
+
+            const response = await fetch(`http://localhost:3000${endpoint}`, {
+                ...defaultOptions,
+                ...options,
+                headers: { ...defaultOptions.headers, ...options.headers }
+            });
+
+            if (response.status === 401) {
+                sessionStorage.removeItem('authToken');
+                window.location.href = '/login.html';
+                return;
+            }
+
+            return response.json();
+        }
+
+        async function loadUserData() {
+            try {
+                const user = await fetchAPI('/api/users/me');
+                document.getElementById('account-name').textContent = user.displayName || user.username;
+                document.getElementById('account-username').textContent = `@${user.username}`;
+                
+                const avatarEl = document.querySelector('.account-avatar');
+                if (user.avatarUrl) {
+                    avatarEl.innerHTML = `<img src="${user.avatarUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`;
+                }
+            } catch (error) {
+                console.error('Error loading user:', error);
+            }
+        }
+
+        async function loadNotifications() {
+            try {
+                const container = document.getElementById('notifications-list');
+                container.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;">Loading...</div>';
+
+                const notifications = await fetchAPI('/api/notifications');
+                
+                if (!notifications || notifications.length === 0) {
+                    container.innerHTML = '<div style="padding:20px;text-align:center;color:#8b8d91;">No notifications yet</div>';
+                    return;
+                }
+
+                container.innerHTML = notifications.map(n => {
+                    const actor = n.actor || {};
+                    const actorName = actor.displayName || actor.username || 'Someone';
+                    const avatar = actor.avatarUrl 
+                        ? `<img src="${actor.avatarUrl}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` 
+                        : '👤';
+                    
+                    let verbText = '';
+                    switch (n.verb) {
+                        case 'follow': verbText = 'started following you'; break;
+                        case 'like': verbText = 'liked your post'; break;
+                        case 'comment': verbText = 'commented on your post'; break;
+                        default: verbText = n.verb;
+                    }
+
+                    const time = new Date(n.createdAt).toLocaleString();
+
+                    return `
+                        <div class="notification-item" style="padding:15px 20px;border-bottom:1px solid #2f3336;display:flex;gap:12px;align-items:center;${!n.read ? 'background:rgba(102,126,234,0.05);' : ''}">
+                            <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;flex-shrink:0;overflow:hidden;">
+                                ${avatar}
+                            </div>
+                            <div style="flex:1;">
+                                <div style="color:#e4e6eb;font-size:14px;margin-bottom:4px;">
+                                    <strong>${actorName}</strong> ${verbText}
+                                </div>
+                                <div style="color:#8b8d91;font-size:12px;">${time}</div>
+                            </div>
+                            ${!n.read ? `<button onclick="markRead('${n.id}')" style="padding:6px 12px;background:#667eea;border:none;border-radius:6px;color:white;cursor:pointer;font-size:12px;">Mark read</button>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            } catch (err) {
+                console.error('Load notifications error:', err);
+                document.getElementById('notifications-list').innerHTML = '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load</div>';
+            }
+        }
+
+        async function markRead(id) {
+            try {
+                await fetchAPI(`/api/notifications/${id}/read`, { method: 'PUT' });
+                loadNotifications();
+            } catch (err) {
+                console.error('Mark read error:', err);
+            }
+        }
+
+        function logout() {
+            sessionStorage.removeItem('authToken');
+            window.location.href = '/login.html';
+        }
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            await loadUserData();
+            await loadNotifications();
+        });
+    </script>
+</body>
+</html>
