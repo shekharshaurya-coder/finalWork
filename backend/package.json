@@ -14,6 +14,7 @@
     "@elastic/elasticsearch": "^9.2.0",
     "bullmq": "^5.65.0",
     "ioredis": "^5.8.2",
+    "node-cron": "^4.2.1",
     "nodemon": "^3.1.11",
     "sentiment": "^5.0.2",
     "socket.io": "^4.8.1"

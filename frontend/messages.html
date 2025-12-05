@@ -26,9 +26,14 @@
         <main class="main-content">
             <div class="messages-container">
                 <div class="messages-header">
-                    <h2>Messages</h2>
-                    <button class="new-message-btn">+ New Message</button>
-                </div>
+    <div class="messages-title-wrap">
+        <h2>Messages</h2>
+        <!-- total unread across all conversations -->
+        <span id="msgHeaderUnreadTotal" class="msg-unread-total"></span>
+    </div>
+    <button class="new-message-btn">+ New Message</button>
+</div>
+
 
                 <div class="conversations-list">
                     <div class="conversation-item" data-username="avani">
@@ -40,8 +45,7 @@
                             </svg>
                         </div>
                         <div class="conversation-info">
-                            <h3>avani jahagirdar</h3>
-                            <p class="last-message">hiee guys</p>
+                           
                         </div>
                         <div class="conversation-meta">
                             <span class="time">1d ago</span>

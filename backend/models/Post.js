@@ -66,5 +66,38 @@ postSchema.pre("save", async function() {
   // Assign the counter value to postId
   this.postId = counter.value;
 });
+// Add this field to your schema definition (inside new mongoose.Schema({...}))
+// right after content or wherever you prefer:
+hashtags: [{
+  type: String,
+  lowercase: true,
+  trim: true
+}],
+
+// Then replace/extend your existing pre("save") hook with:
+postSchema.pre("save", async function() {
+  // Skip if postId already exists
+  if (!this.postId) {
+    const Counter = require("./Counter"); // ensure path
+    const counter = await Counter.findOneAndUpdate(
+      { name: "postId" },
+      { $inc: { value: 1 }},
+      { upsert: true, new: true }
+    );
+    this.postId = counter.value;
+  }
+
+  // Extract hashtags from content (basic regex: words starting with #)
+  // e.g. "Hello #fun #AI2025!" => ["fun","ai2025"]
+  if (this.content && typeof this.content === "string") {
+    const tags = Array.from(this.content.matchAll(/#([A-Za-z0-9_]+)/g))
+                       .map(m => m[1].toLowerCase());
+    // remove duplicates
+    this.hashtags = [...new Set(tags)];
+  } else {
+    this.hashtags = [];
+  }
+});
+
 
 module.exports = mongoose.model('Post', postSchema);

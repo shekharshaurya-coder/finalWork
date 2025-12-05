@@ -287,25 +287,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ----- Load conversations from backend (SORTED) ----- */
   /* ----- Load conversations from backend (SORTED + DEDUPED) ----- */
-async function loadConversations(){
+/* ----- Load conversations from backend (SORTED + DEDUPED + UNREAD HIGHLIGHT) ----- */
+async function loadConversations() {
   try {
     const data = await apiFetch('/conversations');
     if (!convListContainer) return;
     convListContainer.innerHTML = '';
+
     if (!data.conversations || !data.conversations.length) {
-      convListContainer.innerHTML = `<div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">No conversations yet. Use search to find someone.</div>`;
+      convListContainer.innerHTML = `
+        <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">
+          No conversations yet. Use search to find someone.
+        </div>`;
+      updateMessageTotalBadge([]); // nothing unread
       return;
     }
 
-    // Defensive dedupe: keep the most recent conversation per username (case-insensitive).
-    // Use Map to preserve only one conv per username (keyed by username.toLowerCase()).
+    // Dedupe by username (case-insensitive)
     const dedupedByUsername = new Map();
-    // If backend provides an id for the other user prefer that; otherwise fallback to username.
     data.conversations.forEach(conv => {
       const key = String(conv.with?.username || conv.with?._id || '').toLowerCase();
-      if (!key) return; // skip malformed entries
+      if (!key) return;
 
-      // If no entry yet, set it. If exists, choose the one with later lastMessage.
       if (!dedupedByUsername.has(key)) {
         dedupedByUsername.set(key, conv);
       } else {
@@ -318,16 +321,16 @@ async function loadConversations(){
       }
     });
 
-    // Convert map values to array and sort by lastMessage time (most recent first)
     const sortedConvs = Array.from(dedupedByUsername.values()).sort((a, b) => {
       const timeA = new Date(a.lastMessage?.createdAt || 0).getTime();
       const timeB = new Date(b.lastMessage?.createdAt || 0).getTime();
       return timeB - timeA;
     });
 
-    // Debug: warn if duplicates were removed
     if (data.conversations.length !== sortedConvs.length) {
-      console.warn(`Removed ${data.conversations.length - sortedConvs.length} duplicate conversation(s) while rendering.`);
+      console.warn(
+        `Removed ${data.conversations.length - sortedConvs.length} duplicate conversation(s) while rendering.`
+      );
     }
 
     sortedConvs.forEach(conv => {
@@ -337,7 +340,15 @@ async function loadConversations(){
 
       const displayName = conv.with.displayName || conv.with.username;
       const lastMsg = conv.lastMessage?.text || 'No messages yet';
-      const timeStr = conv.lastMessage?.createdAt ? timeAgo(new Date(conv.lastMessage.createdAt).getTime()) : '';
+      const timeStr = conv.lastMessage?.createdAt
+        ? timeAgo(new Date(conv.lastMessage.createdAt).getTime())
+        : '';
+
+      const unreadCount = typeof conv.unreadCount === 'number' ? conv.unreadCount : 0;
+      const isUnread = unreadCount > 0;
+      if (isUnread) {
+        item.classList.add('unread'); // <-- CSS will highlight this row
+      }
 
       item.innerHTML = `
         <div class="conversation-avatar">
@@ -352,6 +363,11 @@ async function loadConversations(){
           <p class="last-message">${escapeHtml(lastMsg)}</p>
         </div>
         <div class="conversation-meta">
+          ${
+            isUnread
+              ? `<span class="unread-pill">${unreadCount}</span>`
+              : ''
+          }
           <span class="time">${escapeHtml(timeStr)}</span>
         </div>
       `;
@@ -360,9 +376,11 @@ async function loadConversations(){
     });
 
     console.log('✅ Loaded', sortedConvs.length, 'conversations (sorted & deduped)');
+    updateMessageTotalBadge(sortedConvs); // update header badge
   } catch (err) {
     console.error('loadConversations error:', err);
     if (!convListContainer) return;
+
     if (err.code === 401 || /token/i.test(err.message)) {
       convListContainer.innerHTML = `
         <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass);display:flex;flex-direction:column;gap:8px">
@@ -381,10 +399,35 @@ async function loadConversations(){
         loadConversations();
       });
     } else {
-      convListContainer.innerHTML = `<div style="color:#f66">Failed to load conversations: ${escapeHtml(err.message)}</div>`;
+      convListContainer.innerHTML = `
+        <div style="color:#f66">
+          Failed to load conversations: ${escapeHtml(err.message)}
+        </div>`;
     }
   }
 }
+
+/* Total unread badge in the header */
+function updateMessageTotalBadge(conversations) {
+  const headerBadge = document.getElementById('msgHeaderUnreadTotal');
+  if (!headerBadge) return;
+
+  const totalUnread = conversations.reduce((sum, c) => {
+    const n = typeof c.unreadCount === 'number' ? c.unreadCount : 0;
+    return sum + n;
+  }, 0);
+
+  if (totalUnread > 0) {
+    headerBadge.textContent = totalUnread;
+    headerBadge.classList.add('visible');
+  } else {
+    headerBadge.textContent = '';
+    headerBadge.classList.remove('visible');
+  }
+}
+
+
+
 
 
   /* ----- Search overlay ----- */

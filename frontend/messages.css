@@ -9,6 +9,8 @@
   --radius: 12px;
   --shadow: 0 6px 18px rgba(2,6,12,0.6);
   --text: #e7e9eb;
+  --accent-purple: #805AD5;
+
 }
 
 /* Reset & layout */
@@ -278,4 +280,62 @@ body{
     border-radius: var(--radius);
     font-weight: 700;
     cursor: pointer;
+}
+/* ===========================
+   UNREAD CONVERSATIONS
+=========================== */
+
+/* Wrapper around title + total badge */
+.messages-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Overall total unread badge in header */
+.msg-unread-total {
+  min-width: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--accent);
+  color: white;
+  text-align: center;
+  display: none; /* shown via .visible */
+}
+
+.msg-unread-total.visible {
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* Per-conversation unread style */
+/* ===========================
+   PURPLE UNREAD MESSAGES
+=========================== */
+.conversation-item.unread {
+  background: linear-gradient(
+    180deg,
+    rgba(128, 90, 213, 0.25),
+    rgba(128, 90, 213, 0.10)
+  );
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 4px rgba(128, 90, 213, 0.8);
+}
+
+.conversation-meta .unread-pill,
+.msg-unread-total {
+  background: var(--accent-purple);
+  color: #fff;
+}
+
+
+/* Total unread badge in header */
+.msg-unread-total {
+  background: #805AD5;
+  color: #fff;
+}
+.conversation-item.unread:hover {
+  box-shadow: 0 0 6px rgba(149, 111, 255, 0.9);
 }

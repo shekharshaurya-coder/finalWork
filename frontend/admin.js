@@ -100,6 +100,28 @@ function showSection(section) {
     if (section === 'logs') searchLogs();
     if (section === 'users') loadUsers();
     if (section === 'analytics') loadAnalytics();
+    if (section === 'kibana') initKibana();   // 🔥 added
+}
+
+// 🔗 Change this URL after you create & share your dashboard in Kibana
+const KIBANA_DASHBOARD_URL =
+  "http://localhost:5601/app/dashboards#/view/<your-dashboard-id>?embed=true&_g=(time:(from:now-24h,to:now))";
+
+function initKibana() {
+    const frame = document.getElementById("kibanaFrame");
+    if (!frame) return;
+
+    // only set src once, so switching tabs doesn't keep reloading Kibana
+    if (!frame.src || frame.src === "about:blank") {
+        frame.src = KIBANA_DASHBOARD_URL;
+    }
+}
+
+function refreshKibana() {
+    const frame = document.getElementById("kibanaFrame");
+    if (frame && frame.contentWindow) {
+        frame.contentWindow.location.reload();
+    }
 }
 
 async function loadAdminInfo() {
@@ -286,10 +308,10 @@ function displayTopEvents(events) {
     `).join('');
 }
 
-function refreshKibana() {
-    const frame = document.getElementById('kibanaFrame');
-    frame.src = frame.src;
-}
+//function refreshKibana() {
+  //  const frame = document.getElementById('kibanaFrame');
+    //frame.src = frame.src;
+//}
 
 function logout() {
     if (confirm('Logout from admin panel?')) {
@@ -306,4 +328,20 @@ function showError(elementId, message) {
 
 function hideError(elementId) {
     document.getElementById(elementId).style.display = 'none';
+}
+//loading kibana 
+
+function initKibana() {
+  const frame = document.getElementById("kibanaFrame");
+  if (frame && frame.src === "about:blank") {
+    frame.src = KIBANA_DASHBOARD_URL;
+  }
+}
+
+function refreshKibana() {
+  const frame = document.getElementById("kibanaFrame");
+  if (frame) {
+    // simple reload
+    frame.contentWindow.location.reload();
+  }
 }

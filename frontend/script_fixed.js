@@ -222,6 +222,38 @@ async function init() {
 
     // Poll for new notifications every 30 seconds
     setInterval(checkNotifications, 30000);
+    //////////////////
+
+    document.addEventListener('DOMContentLoaded', () => {
+  console.log('🚀 Page loaded - updating badges...');
+  updateSidebarMessagesBadge();
+  
+  // Update every 30 seconds
+  setInterval(updateSidebarMessagesBadge, 30000);
+});
+
+// Also call after sending/reading messages:
+// After sending a message:
+socket.on("message_sent", (message) => {
+  console.log("✅ Message sent:", message);
+  appendMessageToChat(message);
+  updateSidebarMessagesBadge(); // 🔥 ADD THIS
+});
+
+// After receiving a message:
+socket.on("new_message", (message) => {
+  console.log("📩 New message received:", message);
+  handleNewMessage(message);
+  updateSidebarMessagesBadge(); // 🔥 ADD THIS
+  try {
+    showDesktopNotification(message);
+  } catch (e) {
+    console.warn("Desktop notification failed", e);
+  }
+});
+
+
+    /////////////////////////
 
     // Add scroll listener for infinite scroll - listen to .content container, not window!
     const contentView = document.getElementById("feed-view");
@@ -393,10 +425,9 @@ async function loadConversations() {
     const conversations = await fetchAPI("/api/messages/conversations");
 
     const container = document.getElementById("conversationsList");
-    container.style.display = "block"; // make sure it's visible
-    container.innerHTML = ""; // clear old
+    container.style.display = "block";
+    container.innerHTML = "";
 
-    // defensive: if not an array, show debug info
     if (!Array.isArray(conversations)) {
       console.warn("[messages] expected array but got:", conversations);
       container.innerHTML = `<div style="padding:20px;text-align:center;color:#8b8d91;">
@@ -410,10 +441,8 @@ async function loadConversations() {
       return;
     }
 
-    // map safely - tolerate different field names
     container.innerHTML = conversations
       .map((conv) => {
-        // normal shapes: conv.otherUser or conv.user
         const other = conv.otherUser || conv.user || conv.participant || {};
         const otherId = other.id || other._id || other.userId || "";
         const displayName =
@@ -424,56 +453,44 @@ async function loadConversations() {
           "Unknown";
         const username =
           other.username || (other.email ? other.email.split("@")[0] : "user");
-        const avatar =
-          other.avatarUrl ||
-          other.avatar ||
-          other.profilePic ||
-          other.picture ||
-          "";
-        const unreadCount =
-          conv.unreadCount ?? conv.unread ?? conv.unreads ?? 0;
+        const avatar = other.avatarUrl || other.avatar || "";
+        const unreadCount = conv.unreadCount ?? 0;
         const lastMessageText =
-          (conv.lastMessage &&
-            (conv.lastMessage.text || conv.lastMessage.body)) ||
-          conv.snippet ||
-          conv.preview ||
-          "";
+          (conv.lastMessage && conv.lastMessage.text) || "";
         const lastCreated =
-          (conv.lastMessage &&
-            (conv.lastMessage.createdAt || conv.lastMessage.ts)) ||
-          conv.updatedAt ||
-          conv.modifiedAt ||
-          "";
+          (conv.lastMessage && conv.lastMessage.createdAt) || "";
 
-        // preview safely
         const lastMessagePreview =
           lastMessageText.length > 60
             ? lastMessageText.substring(0, 60) + "..."
             : lastMessageText;
 
-        // online indicator check (if your onlineUsers is a Set or Map)
         const isOnline =
           typeof onlineUsers !== "undefined" &&
           onlineUsers &&
           (onlineUsers.has ? onlineUsers.has(otherId) : false);
 
-        // safe click params (escape single quotes)
         const safeOtherId = ("" + otherId).replace(/'/g, "\\'");
         const safeUsername = ("" + username).replace(/'/g, "\\'");
         const safeDisplayName = ("" + displayName).replace(/'/g, "\\'");
-        const safeAvatar = ("" + avatar).replace(/'/g, "\\''");
+        const safeAvatar = ("" + avatar).replace(/'/g, "\\'");
+
+        // 🔥 HIGHLIGHT UNREAD CONVERSATIONS
+        const isUnread = unreadCount > 0;
+        const bgColor = isUnread ? "rgba(102, 126, 234, 0.15)" : "transparent";
+        const textWeight = isUnread ? "600" : "400";
 
         return `
-        <div class="conversation-item" onclick="openConversation('${safeOtherId}', '${safeUsername}', '${safeDisplayName}', '${safeAvatar}', '${
-          conv.conversationId || otherId || ""
-        }')" style="padding:12px;border-bottom:1px solid #2f3336;cursor:pointer;">
+        <div class="conversation-item" 
+             onclick="openConversation('${safeOtherId}', '${safeUsername}', '${safeDisplayName}', '${safeAvatar}', '${conv.conversationId || otherId || ""}')" 
+             style="padding:12px;border-bottom:1px solid #2f3336;cursor:pointer;background:${bgColor};transition:0.2s;">
           <div style="display:flex;align-items:center;gap:12px;">
             <div style="position:relative;flex-shrink:0;">
               <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
                 ${
                   avatar
-                    ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='${PLACEHOLDER_AVATAR}'">`
-                    : `<img src="${PLACEHOLDER_AVATAR}" style="width:100%;height:100%;object-fit:cover;">`
+                    ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='monkey.jpg'">`
+                    : `<img src="monkey.jpg" style="width:100%;height:100%;object-fit:cover;">`
                 }
               </div>
               ${
@@ -485,25 +502,23 @@ async function loadConversations() {
 
             <div style="flex:1;min-width:0;">
               <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:600;color:#e4e6eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(
-                  displayName
-                )}</div>
+                <div style="font-weight:${textWeight};color:#e4e6eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(
+          displayName
+        )}</div>
                 <div style="font-size:12px;color:#8b8d91;">${
                   lastCreated ? formatMessageTime(lastCreated) : ""
                 }</div>
               </div>
               <div style="font-size:14px;color:${
-                unreadCount > 0 ? "#e4e6eb" : "#8b8d91"
-              };${
-          unreadCount > 0 ? "font-weight:600;" : ""
-        };white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                isUnread ? "#e4e6eb" : "#8b8d91"
+              };font-weight:${textWeight};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
                 ${escapeHtml(lastMessagePreview)}
               </div>
             </div>
 
             ${
               unreadCount > 0
-                ? `<div style="background:#667eea;color:white;padding:6px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px">${unreadCount}</div>`
+                ? `<div style="background:#667eea;color:white;padding:6px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;min-width:24px;text-align:center;">${unreadCount}</div>`
                 : ""
             }
           </div>
@@ -514,7 +529,7 @@ async function loadConversations() {
 
     console.log("[messages] rendered", conversations.length, "conversations");
   } catch (error) {
-    console.error("Error loading conversations (safe renderer):", error);
+    console.error("Error loading conversations:", error);
     const container = document.getElementById("conversationsList");
     container.innerHTML =
       '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load conversations</div>';
@@ -628,17 +643,11 @@ async function openConversation(
 ) {
   currentConversation = conversationId;
 
-  // Hide conversations list
   document.getElementById("conversationsList").style.display = "none";
   document.getElementById("messageSearchResults").style.display = "none";
-
-  // Show chat window
   document.getElementById("chatWindow").style.display = "flex";
-
-  // Keep input visible always
   document.getElementById("globalChatInput").style.display = "flex";
 
-  // Set header
   document.getElementById("chatUserName").innerText = displayName;
   document.getElementById("chatUsername").innerText = "@" + username;
 
@@ -646,12 +655,88 @@ async function openConversation(
   if (avatarUrl) {
     avatarEl.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`;
   } else {
-    avatarEl.innerHTML = "👤";
+    avatarEl.innerHTML = "💤";
   }
 
   window.currentRecipient = { id: userId, username, displayName };
 
   await loadMessages(userId);
+
+  // 🔥 MARK MESSAGES AS READ
+  if (socket) {
+    socket.emit("mark_read", {
+      conversationId: conversationId,
+      senderId: userId,
+    });
+  }
+
+  // 🔥 REFRESH CONVERSATION LIST TO UPDATE UNREAD COUNTS
+  setTimeout(() => {
+    loadConversations();
+    updateSidebarMessagesBadge();
+  }, 500);
+}
+
+// Fix updateSidebarMessagesBadge to use messages endpoint
+async function updateSidebarMessagesBadge() {
+  try {
+    let token = sessionStorage.getItem('token');
+    if (!token) {
+      console.log('No token found - skipping badge update');
+      return;
+    }
+    
+    token = token.replace(/^"(.*)"$/, '$1').trim();
+    
+    console.log('📊 Fetching notification and message counts...');
+    
+    // Get notification count (bell icon)
+    const notifRes = await fetch('/api/notifications/unread/count', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    // 🔥 Get MESSAGES count (not notifications)
+    const msgRes = await fetch('/api/messages/unread/count', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (notifRes.ok) {
+      const notifData = await notifRes.json();
+      console.log('✅ Notification count:', notifData.count);
+      
+      const notificationBadge = document.getElementById('notificationBadge');
+      if (notifData.count > 0 && notificationBadge) {
+        notificationBadge.textContent = notifData.count;
+        notificationBadge.style.display = 'inline-block';
+      } else if (notificationBadge) {
+        notificationBadge.style.display = 'none';
+      }
+    }
+    
+    if (msgRes.ok) {
+      const msgData = await msgRes.json();
+      console.log('✅ Message count:', msgData.count);
+      
+      const messagesBadge = document.getElementById('sidebarMessagesBadge');
+      if (msgData.count > 0 && messagesBadge) {
+        messagesBadge.textContent = msgData.count;
+        messagesBadge.style.display = 'inline-block';
+      } else if (messagesBadge) {
+        messagesBadge.style.display = 'none';
+      }
+    }
+    
+  } catch (e) {
+    console.error('Error updating badges:', e);
+  }
 }
 
 // Load messages for conversation
@@ -685,49 +770,89 @@ async function loadMessages(userId) {
 // Create message HTML
 function createMessageHTML(message) {
   const isMine = message.isMine;
+  // unread incoming = message from others which is not yet read
+  const isUnreadIncoming = !isMine && message.read === false;
+
+  const bubbleBg = isMine
+    ? "#667eea"                                        // your existing blue for own messages
+    : (isUnreadIncoming ? "#4f78c0ff" : "#0366c9ff");      // darker + special for unread
+
+  const bubbleFontWeight = isUnreadIncoming ? "600" : "400";
+  const bubbleBoxShadow = isUnreadIncoming
+    ? "0 0 0 1px rgba(96, 118, 218, 0.8)"           // subtle highlight ring
+    : "none";
+
   const time = new Date(message.createdAt).toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
   });
 
   return `
-        <div class="message ${isMine ? "mine" : "theirs"}" data-message-id="${
-    message.id
-  }" style="display:flex;gap:10px;margin-bottom:12px;${
-    isMine ? "flex-direction:row-reverse;" : ""
-  }">
-            ${
-              !isMine
-                ? `
-                <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
-                    ${
-                      message.sender.avatarUrl
-                        ? `<img src="${message.sender.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
-                        : "👤"
-                    }
-                </div>
-            `
-                : ""
-            }
-            <div style="max-width:70%;">
-                <div style="background:${
-                  isMine ? "#667eea" : "#3a3b3c"
-                };color:#fff;padding:10px 14px;border-radius:${
-    isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px"
-  };word-wrap:break-word;">
-                    ${message.text}
-                </div>
-                <div style="font-size:11px;color:#8b8d91;margin-top:4px;${
-                  isMine ? "text-align:right;" : ""
-                }">
-                    ${time} ${
-    isMine ? (message.read ? "✓✓" : message.delivered ? "✓" : "○") : ""
-  }
-                </div>
-            </div>
+    <div class="message ${isMine ? "mine" : "theirs"}"
+         data-message-id="${message.id}"
+         style="display:flex;gap:10px;margin-bottom:12px;${isMine ? "flex-direction:row-reverse;" : ""}">
+      
+      ${
+        !isMine
+          ? `
+        <div style="
+          width:36px;
+          height:36px;
+          border-radius:50%;
+          background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
+          display:flex;
+          align-items:center;
+          justify-content:center;
+          font-size:16px;
+          overflow:hidden;
+          flex-shrink:0;
+        ">
+          ${
+            message.sender && message.sender.avatarUrl
+              ? `<img src="${message.sender.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
+              : "👤"
+          }
+        </div>`
+          : ""
+      }
+
+      <div style="max-width:70%;">
+        <div
+          style="
+            background:${bubbleBg};
+            color:#fff;
+            padding:10px 14px;
+            border-radius:${isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px"};
+            word-wrap:break-word;
+            font-weight:${bubbleFontWeight};
+            box-shadow:${bubbleBoxShadow};
+          "
+        >
+          ${escapeHtml(message.text || "")}
         </div>
-    `;
+
+        <div style="
+          font-size:11px;
+          color:#8b8d91;
+          margin-top:4px;
+          ${isMine ? "text-align:right;" : ""}
+        ">
+          ${time}
+          ${
+            isMine
+              ? (message.read
+                  ? " ✓✓"
+                  : message.delivered
+                    ? " ✓"
+                    : " ○")
+              : ""
+          }
+        </div>
+      </div>
+    </div>
+  `;
 }
+
 
 // Send message
 function sendMessage() {

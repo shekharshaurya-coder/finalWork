@@ -25,6 +25,7 @@ const { Types } = require("mongoose");
 //const authRoutes = require("./routes/auth.cjs");
 const notificationsRouter = require("./routes/notifications"); // path you chose
 const messagesRouter = require("./routes/messages");
+const trendingRouter = require("./routes/trending");
 
 // ============== BULLMQ QUEUES ==============
 const mediaQueue = require("./queues/media.queue");
@@ -46,6 +47,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 //app.use(express.static("frontend"));
 //app.use("/api/auth", authRoutes);
 app.use("/api/notifications", notificationsRouter);
+app.use("/api/trending", trendingRouter);
+
 
 // if using socket.io, attach io to app so routes can emit
 
@@ -285,145 +288,122 @@ io.on("connection", (socket) => {
   // Replace the existing socket.on('send_message') handler with this:
 
   // Handle new message
-  socket.on("send_message", async (data) => {
-    try {
-      const Message = require("./models/Message");
-      const Notification = require("./models/Notification");
+  // Handle new message
+socket.on("send_message", async (data) => {
+  try {
+    const Message = require("./models/Message");
+    // ❌ const Notification = require("./models/Notification");  // REMOVE THIS LINE
 
-      console.log(
-        "📤 Sending message from:",
-        socket.username,
-        "to:",
-        data.recipientId
-      );
+    console.log(
+      "📤 Sending message from:",
+      socket.username,
+      "to:",
+      data.recipientId
+    );
 
-      // Create conversation ID (sorted user IDs)
-      const conversationId = [socket.userId, data.recipientId].sort().join("_");
+    // Create conversation ID (sorted user IDs)
+    const conversationId = [socket.userId, data.recipientId].sort().join("_");
 
-      // Save message to database
-      const newMessage = await Message.create({
-        conversationId: conversationId,
-        sender: socket.userId,
-        recipients: [data.recipientId],
-        text: data.text,
-        deliveredTo: [],
-        readBy: [],
+    // Save message to database
+    const newMessage = await Message.create({
+      conversationId: conversationId,
+      sender: socket.userId,
+      recipients: [data.recipientId],
+      text: data.text,
+      deliveredTo: [],
+      readBy: [],
+    });
+
+    console.log("✅ Message saved to database:", newMessage._id);
+
+    // Populate sender info
+    const populatedMessage = await Message.findById(newMessage._id)
+      .populate("sender", "username displayName avatarUrl")
+      .lean();
+
+    const messageData = {
+      id: populatedMessage._id,
+      conversationId: conversationId,
+      sender: {
+        id: populatedMessage.sender._id,
+        username: populatedMessage.sender.username,
+        displayName:
+          populatedMessage.sender.displayName ||
+          populatedMessage.sender.username,
+        avatarUrl: populatedMessage.sender.avatarUrl,
+      },
+      text: populatedMessage.text,
+      createdAt: populatedMessage.createdAt,
+      delivered: false,
+      read: false,
+    };
+
+    // ✅ NO MORE Notification.create() HERE
+    // (messages will still be delivered via 'new_message' event)
+
+    // Send to sender (confirmation)
+    socket.emit("message_sent", messageData);
+
+    // Send to recipient if online
+    const recipientSocketId = connectedUsers.get(data.recipientId);
+    if (recipientSocketId) {
+      io.to(recipientSocketId).emit("new_message", messageData);
+
+      // Mark as delivered
+      await Message.findByIdAndUpdate(newMessage._id, {
+        $addToSet: { deliveredTo: data.recipientId },
       });
 
-      console.log("✅ Message saved to database:", newMessage._id);
+      socket.emit("message_delivered", { messageId: newMessage._id });
 
-      // Populate sender info
-      const populatedMessage = await Message.findById(newMessage._id)
-        .populate("sender", "username displayName avatarUrl")
-        .lean();
-
-      const messageData = {
-        id: populatedMessage._id,
-        conversationId: conversationId,
-        sender: {
-          id: populatedMessage.sender._id,
-          username: populatedMessage.sender.username,
-          displayName:
-            populatedMessage.sender.displayName ||
-            populatedMessage.sender.username,
-          avatarUrl: populatedMessage.sender.avatarUrl,
-        },
-        text: populatedMessage.text,
-        createdAt: populatedMessage.createdAt,
-        delivered: false,
-        read: false,
-      };
-
-      // ✅ CREATE NOTIFICATION FOR RECIPIENT
-      try {
-        const notification = await Notification.create({
-          user: data.recipientId,
-          actor: socket.userId,
-          verb: "system",
-          targetType: "Message",
-          targetId: newMessage._id,
-          read: false,
-        });
-
-        console.log("✅ Notification created:", notification._id);
-
-        // Emit notification event to recipient
-        const recipientSocketId = connectedUsers.get(data.recipientId);
-        if (recipientSocketId) {
-          io.to(recipientSocketId).emit("new_notification", {
-            type: "message",
-            from: socket.username,
-            fromDisplayName:
-              populatedMessage.sender.displayName || socket.username,
-            message: data.text.substring(0, 100),
-            notificationId: notification._id,
-          });
-        }
-      } catch (notifErr) {
-        console.error("❌ Failed to create notification:", notifErr);
-        // Don't fail the whole message send if notification fails
-      }
-
-      // Send to sender (confirmation)
-      socket.emit("message_sent", messageData);
-
-      // Send to recipient if online
-      const recipientSocketId = connectedUsers.get(data.recipientId);
-      if (recipientSocketId) {
-        io.to(recipientSocketId).emit("new_message", messageData);
-
-        // Mark as delivered
-        await Message.findByIdAndUpdate(newMessage._id, {
-          $addToSet: { deliveredTo: data.recipientId },
-        });
-
-        socket.emit("message_delivered", { messageId: newMessage._id });
-
-        console.log("✅ Message delivered to online recipient");
-      } else {
-        console.log("📪 Recipient offline - notification will wait");
-      }
-
-      console.log(
-        "📩 Message send complete:",
-        socket.username,
-        "→",
-        data.recipientId
-      );
-    } catch (error) {
-      console.error("❌ Error sending message:", error);
-      socket.emit("message_error", { error: "Failed to send message" });
+      console.log("✅ Message delivered to online recipient");
+    } else {
+      console.log("📪 Recipient offline (message stored, no socket yet)");
     }
-  });
+
+    console.log(
+      "📩 Message send complete:",
+      socket.username,
+      "→",
+      data.recipientId
+    );
+  } catch (error) {
+    console.error("❌ Error sending message:", error);
+    socket.emit("message_error", { error: "Failed to send message" });
+  }
+});
+
 
   // Handle message read
-  socket.on("mark_read", async (data) => {
-    try {
-      const Message = require("./models/Message");
+socket.on("mark_read", async (data) => {
+  try {
+    const Message = require("./models/Message");
 
-      await Message.updateMany(
-        {
-          conversationId: data.conversationId,
-          sender: data.senderId,
-          readBy: { $ne: socket.userId },
-        },
-        {
-          $addToSet: { readBy: socket.userId },
-        }
-      );
-
-      // Notify sender that messages were read
-      const senderSocketId = connectedUsers.get(data.senderId);
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("messages_read", {
-          conversationId: data.conversationId,
-          readBy: socket.userId,
-        });
+    const result = await Message.updateMany(
+      {
+        conversationId: data.conversationId,
+        sender: data.senderId,
+        readBy: { $ne: socket.userId },
+      },
+      {
+        $addToSet: { readBy: socket.userId },
       }
-    } catch (error) {
-      console.error("Error marking messages as read:", error);
+    );
+
+    console.log(`✅ Marked ${result.modifiedCount} messages as read`);
+
+    // Notify sender that messages were read
+    const senderSocketId = connectedUsers.get(data.senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messages_read", {
+        conversationId: data.conversationId,
+        readBy: socket.userId,
+      });
     }
-  });
+  } catch (error) {
+    console.error("Error marking messages as read:", error);
+  }
+});
 
   // Handle disconnect
   socket.on("disconnect", () => {
@@ -446,7 +426,6 @@ app.get("/api/messages/conversations", auth, async (req, res) => {
   try {
     const Message = require("./models/Message");
 
-    // Get all conversations where user is involved
     const messages = await Message.find({
       $or: [{ sender: req.user._id }, { recipients: req.user._id }],
     })
@@ -455,14 +434,12 @@ app.get("/api/messages/conversations", auth, async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    // Group by conversation
     const conversationsMap = new Map();
 
     messages.forEach((msg) => {
       const convId = msg.conversationId;
 
       if (!conversationsMap.has(convId)) {
-        // Find the other user (not current user)
         const otherUser =
           msg.sender._id.toString() === req.user._id.toString()
             ? msg.recipients[0]
@@ -540,6 +517,23 @@ app.get("/api/messages/conversation/:userId", auth, async (req, res) => {
     res.json(formattedMessages);
   } catch (error) {
     console.error("Error getting messages:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+app.get("/api/messages/unread/count", auth, async (req, res) => {
+  try {
+    const Message = require("./models/Message");
+
+    const count = await Message.countDocuments({
+      recipients: req.user._id,
+      sender: { $ne: req.user._id },
+      readBy: { $ne: req.user._id },
+    });
+
+    console.log(`💬 Unread messages for ${req.user.username}:`, count);
+    res.json({ count });
+  } catch (err) {
+    console.error("Get unread messages count error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
@@ -1578,25 +1572,14 @@ app.put("/api/notifications/:notificationId/read", auth, async (req, res) => {
 // GET UNREAD NOTIFICATION COUNT
 app.get("/api/notifications/unread/count", auth, async (req, res) => {
   try {
-    const cacheKey = cacheHelper.keys.unreadNotifications(req.user._id);
-
-    // Try to get from cache
-    const cached = await redisHelpers.getJSON(cacheKey);
-    if (cached !== null) {
-      console.log("✅ Unread count cache hit");
-      return res.json({ count: cached });
-    }
-
     const Notification = require("./models/Notification");
-
+    
     const count = await Notification.countDocuments({
       user: req.user._id,
       read: false,
     });
 
-    // Cache for 1 minute
-    await redisHelpers.setJSON(cacheKey, count, { ex: 60 });
-
+    console.log(`📊 Unread notifications for ${req.user.username}:`, count);
     res.json({ count });
   } catch (err) {
     console.error("Get unread count error:", err);
@@ -1833,6 +1816,49 @@ const cacheHelper = {
 
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || "0.0.0.0";
+
+require("./cron/trendingCron");
+
+// ================= TRENDING ROUTE =================
+app.get("/api/trending", async (req, res) => {
+  try {
+    const Post = require("./models/Post");
+
+    const posts = await Post.find().lean();
+    let hashtagCounts = {};
+
+    posts.forEach(post => {
+      const tags = (post.content || "").match(/#\w+/g) || [];
+      tags.forEach(tag => {
+        hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
+      });
+    });
+
+    if (Object.keys(hashtagCounts).length === 0) {
+      return res.json({
+        hashtag: null,
+        posts: []
+      });
+    }
+
+    const topTag = Object.entries(hashtagCounts)
+      .sort((a, b) => b[1] - a[1])[0][0];
+
+    const trendingPosts = posts.filter(p =>
+      (p.content || "").includes(topTag)
+    );
+
+    res.json({
+      hashtag: topTag,
+      posts: trendingPosts
+    });
+
+  } catch (err) {
+    console.error("Trending route error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
 
 server.listen(PORT, HOST, () => {
   const ip = require("os").networkInterfaces();

@@ -85,84 +85,65 @@ router.get('/conversations', auth, async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.userId);
 
-    console.log('📨 Loading conversations for user:', req.userId);
-
-    // ✅ FIXED: Group by conversationId and get the LATEST message for each
     const agg = await Message.aggregate([
       { $match: { $or: [{ sender: myId }, { recipients: myId }] } },
-      { $sort: { createdAt: -1 } }, // Sort by newest first
+      { $sort: { createdAt: -1 } },
       {
         $group: {
           _id: '$conversationId',
-          lastMessageId: { $first: '$_id' },
           lastText: { $first: '$text' },
           lastTime: { $first: '$createdAt' },
           senderId: { $first: '$sender' },
           recipients: { $first: '$recipients' }
         }
-      },
-      { $sort: { lastTime: -1 } }, // ✅ Sort conversations by most recent message
-      { $limit: 200 }
+      }
     ]);
 
-    console.log('📨 Found', agg.length, 'unique conversations');
+    // Build conversation objects
+    const convs = await Promise.all(
+      agg.map(async (c) => {
+        const allIds = [c.senderId, ...c.recipients].map(id => String(id));
+        const otherId = allIds.find(id => id !== String(myId));
+        if (!otherId) return null;
 
-    // Replace participant ObjectIds with user info
-    const convs = await Promise.all(agg.map(async (c) => {
-      // Get all participant IDs from this conversation
-      const allParticipantIds = [c.senderId, ...c.recipients].map(id => String(id));
-      const uniqueIds = Array.from(new Set(allParticipantIds));
-      
-      // Find the other user (not me)
-      const otherIds = uniqueIds.filter(id => id !== String(myId));
-      
-      if (otherIds.length === 0) {
-        console.warn('⚠️ No other user found in conversation:', c._id);
-        return null;
-      }
-      
-      const others = await User.find({ _id: { $in: otherIds } })
-        .select('username displayName avatarUrl');
-      
-      const otherUser = others[0];
-      
-      if (!otherUser) {
-        console.warn('⚠️ Other user not found in DB for conversation:', c._id);
-        return null;
-      }
-      
-      return {
-        conversationId: c._id,
-        with: {
-          _id: otherUser._id,
-          username: otherUser.username,
-          displayName: otherUser.displayName || otherUser.username,
-          avatarUrl: otherUser.avatarUrl
-        },
-        lastMessage: {
-          text: c.lastText,
-          createdAt: c.lastTime
-        },
-        participants: others
-      };
-    }));
+        const otherUser = await User.findById(otherId)
+          .select('username displayName avatarUrl');
+        if (!otherUser) return null;
 
-    // ✅ Remove null entries and ensure sorted by time
-    const filteredConvs = convs
-      .filter(c => c && c.with)
-      .sort((a, b) => {
-        const timeA = new Date(a.lastMessage.createdAt).getTime();
-        const timeB = new Date(b.lastMessage.createdAt).getTime();
-        return timeB - timeA; // Most recent first
-      });
+        // ⭐ unread count
+        const unreadCount = await Message.countDocuments({
+          conversationId: c._id,
+          recipients: myId,
+          readBy: { $ne: myId }
+        });
 
-    console.log('✅ Returning', filteredConvs.length, 'valid conversations (sorted by time)');
+        return {
+          conversationId: c._id,
+          with: {
+            _id: otherUser._id,
+            username: otherUser.username,
+            displayName: otherUser.displayName || otherUser.username,
+            avatarUrl: otherUser.avatarUrl
+          },
+          lastMessage: {
+            text: c.lastText,
+            createdAt: c.lastTime
+          },
+          unreadCount // ⭐ added
+        };
+      })
+    );
 
-    res.json({ conversations: filteredConvs });
+    res.json({
+      conversations: convs
+        .filter(Boolean)
+        .sort((a, b) =>
+          new Date(b.lastMessage.createdAt) - new Date(a.lastMessage.createdAt)
+        )
+    });
+
   } catch (err) {
-    console.error('❌ Load conversations error:', err);
-    console.error('Error stack:', err.stack);
-    res.status(500).json({ error: 'Failed to load conversations', details: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -173,65 +154,45 @@ router.get('/conversations', auth, async (req, res) => {
 router.get('/conversations/user/:username', auth, async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.userId);
-    const { username } = req.params;
+    const username = req.params.username;
 
-    console.log('💬 Loading messages with user:', username);
-
-    const target = await User.findOne({ username }).select('_id username displayName avatarUrl');
+    const target = await User.findOne({ username })
+      .select('_id username displayName avatarUrl');
     if (!target) {
-      console.log('❌ Target user not found:', username);
       return res.status(404).json({ error: 'User not found' });
     }
-    
-    const tid = target._id;
-    console.log('✅ Target user found:', target.username, 'ID:', tid);
 
-    // get messages where (sender=my && recipients include tid) OR (sender=tid && recipients include my)
     const msgs = await Message.find({
       $or: [
-        { sender: myId, recipients: tid },
-        { sender: tid, recipients: myId }
+        { sender: myId, recipients: target._id },
+        { sender: target._id, recipients: myId }
       ]
     })
-    .populate('sender', '_id username displayName avatarUrl')
-    .sort({ createdAt: 1 }); // oldest -> newest
+      .populate('sender', '_id username displayName avatarUrl')
+      .sort({ createdAt: 1 });
 
-    console.log('✅ Found', msgs.length, 'messages');
+    // ⭐ Mark incoming messages as READ
+    await Message.updateMany(
+      {
+        sender: target._id,
+        recipients: myId,
+        readBy: { $ne: myId }
+      },
+      {
+        $addToSet: { readBy: myId }
+      }
+    );
 
-    res.json({ with: target, messages: msgs });
-  } catch (err) {
-    console.error('❌ Load messages error:', err);
-    console.error('Error stack:', err.stack);
-    res.status(500).json({ error: 'Failed to load messages', details: err.message });
-  }
-});
-
-/**
- * GET /api/messages/unread/count
- * Get count of unread messages for current user
- */
-router.get('/messages/unread/count', auth, async (req, res) => {
-  try {
-    const myId = new mongoose.Types.ObjectId(req.userId);
-    
-    console.log('📊 Getting unread message count for user:', req.userId);
-    
-    // Count messages where:
-    // - User is in recipients
-    // - User has NOT read the message
-    const count = await Message.countDocuments({
-      recipients: myId,
-      readBy: { $ne: myId }
+    res.json({
+      with: target,
+      messages: msgs
     });
-    
-    console.log('✅ Unread messages:', count);
-    
-    res.json({ count });
+
   } catch (err) {
-    console.error('❌ Unread message count error:', err);
-    res.status(500).json({ error: 'Failed to get count', details: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
+
 
 /**
  * POST /api/conversations/user/:username/messages
