@@ -1,5 +1,4 @@
-
-// routes/messages.js - FIXED: Sorting, Duplicates, and Notifications
+// routes/messages.js - FIXED: Sorting, Duplicates, Notifications, and Logging
 const express = require('express');
 const router = express.Router();
 const mongoose = require('mongoose');
@@ -8,6 +7,7 @@ const mongoose = require('mongoose');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Notification = require('../models/Notification');
+const logger = require('../services/logger'); // ✅ added logger import
 
 // helper auth middleware (minimal) - FIXED
 const jwt = require('jsonwebtoken');
@@ -172,7 +172,7 @@ router.get('/conversations/user/:username', auth, async (req, res) => {
       .sort({ createdAt: 1 });
 
     // ⭐ Mark incoming messages as READ
-    await Message.updateMany(
+    const updateResult = await Message.updateMany(
       {
         sender: target._id,
         recipients: myId,
@@ -182,6 +182,19 @@ router.get('/conversations/user/:username', auth, async (req, res) => {
         $addToSet: { readBy: myId }
       }
     );
+
+    // ✅ Log that messages were read (if any updated)
+    if (updateResult.modifiedCount > 0) {
+      await logger.logFromRequest(req, {
+        eventType: 'MESSAGE_READ',
+        description: 'User read messages in a conversation',
+        metadata: {
+          withUserId: target._id,
+          withUsername: target.username,
+          modifiedCount: updateResult.modifiedCount
+        }
+      });
+    }
 
     res.json({
       with: target,
@@ -198,6 +211,7 @@ router.get('/conversations/user/:username', auth, async (req, res) => {
  * POST /api/conversations/user/:username/messages
  * Send message to username. Body: { text, attachments? }
  * ✅ FIXED: Create notification for recipient
+ * ✅ ADDED: Logging for MESSAGE_SENT and MESSAGE_RECEIVED
  */
 router.post('/conversations/user/:username/messages', auth, async (req, res) => {
   try {
@@ -230,6 +244,34 @@ router.post('/conversations/user/:username/messages', auth, async (req, res) => 
     await msg.save();
 
     console.log('✅ Message saved:', msg._id);
+
+    // ✅ Log MESSAGE_SENT (from sender perspective)
+    await logger.logFromRequest(req, {
+      eventType: 'MESSAGE_SENT',
+      description: 'User sent a direct message',
+      metadata: {
+        messageId: msg._id,
+        conversationId,
+        toUserId: target._id,
+        toUsername: target.username,
+        textPreview: text.substring(0, 100)
+      }
+    });
+
+    // ✅ Log MESSAGE_RECEIVED (from recipient perspective)
+    await logger.logFromRequest(req, {
+      eventType: 'MESSAGE_RECEIVED',
+      description: 'User received a direct message',
+      userId: target._id,
+      username: target.username,
+      metadata: {
+        messageId: msg._id,
+        conversationId,
+        fromUserId: myId,
+        fromUsername: req.user.username,
+        textPreview: text.substring(0, 100)
+      }
+    });
 
     // ✅ CREATE NOTIFICATION FOR RECIPIENT
     try {

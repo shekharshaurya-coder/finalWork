@@ -14,13 +14,17 @@ const UserSchema = new Schema(
     bio: { type: String, default: "" },
     avatarUrl: { type: String, default: "" },
 
+    // New fields for age and gender
+    age: { type: Number, required: true, min: 16 },
+    gender: { type: String, required: true, enum: ['male', 'female', 'other', 'prefer-not-to-say'] },
+
     followersCount: { type: Number, default: 0 },
     followingCount: { type: Number, default: 0 },
   },
   { timestamps: true }
 );
 
-// NOTE: async pre-save hooks should NOT call next() — Mongoose expects the async function to resolve/throw.
+// NOTE: async pre-save hooks should NOT call next() – Mongoose expects the async function to resolve/throw.
 UserSchema.pre("save", async function () {
   // If updating existing user (userId already set) -> skip increment
   if (this.userId) return;

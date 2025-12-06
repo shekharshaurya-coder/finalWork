@@ -26,6 +26,8 @@ const { Types } = require("mongoose");
 const notificationsRouter = require("./routes/notifications"); // path you chose
 const messagesRouter = require("./routes/messages");
 const trendingRouter = require("./routes/trending");
+const logDemoRoutes = require('./routes/logDemo');
+
 
 // ============== BULLMQ QUEUES ==============
 const mediaQueue = require("./queues/media.queue");
@@ -51,6 +53,17 @@ app.use("/api/trending", trendingRouter);
 
 
 // if using socket.io, attach io to app so routes can emit
+
+//writen by shekhar 
+async function logplease(req,event,desc ,md){
+  await logger.logFromRequest(req, {
+  eventType: event,
+  description: desc,
+  metadata:  md ,
+});
+
+
+}
 
 // Enable CORS for development
 app.use((req, res, next) => {
@@ -111,6 +124,7 @@ app.use("/api/conversations", auth, messagesRouter); // ensure auth is used here
 // GET FOLLOWERS OF A USER
 // ==============================
 // GET followers (users who follow :id) with followerCount
+app.use('/demo', logDemoRoutes);
 app.get("/api/users/:id/followers", async (req, res) => {
   try {
     const userId = req.params.id;
@@ -317,6 +331,7 @@ socket.on("send_message", async (data) => {
     console.log("✅ Message saved to database:", newMessage._id);
 
     // Populate sender info
+   logplease(req,'MESSAGE_SENT', 'User sent a message', { recipientId: data.recipientId, messageId: newMessage._id });
     const populatedMessage = await Message.findById(newMessage._id)
       .populate("sender", "username displayName avatarUrl")
       .lean();
@@ -355,6 +370,7 @@ socket.on("send_message", async (data) => {
       });
 
       socket.emit("message_delivered", { messageId: newMessage._id });
+     logplease(req,'MESSAGE_DELIVERED', 'Message delivered to recipient', { recipientId: data.recipientId, messageId: newMessage._id });
 
       console.log("✅ Message delivered to online recipient");
     } else {
@@ -391,6 +407,9 @@ socket.on("mark_read", async (data) => {
     );
 
     console.log(`✅ Marked ${result.modifiedCount} messages as read`);
+       if (result.modifiedCount > 0) {
+      logplease('MESSAGE_READ', 'User read messages in a conversation', { conversationId: data.conversationId, senderId: data.senderId });
+    }
 
     // Notify sender that messages were read
     const senderSocketId = connectedUsers.get(data.senderId);
@@ -541,21 +560,70 @@ app.get("/api/messages/unread/count", auth, async (req, res) => {
 // SIGNUP
 app.post("/api/auth/signup", async (req, res) => {
   try {
-    const { email, username, password } = req.body;
-    if (!email || !username || !password)
-      return res.status(400).json({ message: "Missing fields" });
+    const { email, username, age, gender, password } = req.body;
+    
+    // Check all fields are provided
+    if (!email || !username || !age || !gender || !password) {
+      return res.status(400).json({ message: "All fields are required" });
+    }
 
-    if (await User.findOne({ email }))
+    // Validate username starts with a letter
+    if (!/^[a-zA-Z]/.test(username)) {
+      return res.status(400).json({ message: "Username must start with a letter" });
+    }
+
+    // Validate username format (letter, then letters/numbers/underscores)
+    if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
+      return res.status(400).json({ 
+        message: "Username can only contain letters, numbers and underscores" 
+      });
+    }
+
+    // Validate age
+    const ageNum = parseInt(age);
+    if (isNaN(ageNum) || ageNum < 16) {
+      return res.status(400).json({ message: "You must be at least 16 years old to sign up" });
+    }
+
+    if (ageNum > 120) {
+      return res.status(400).json({ message: "Please enter a valid age" });
+    }
+
+    // Validate gender
+    const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+    if (!validGenders.includes(gender)) {
+      return res.status(400).json({ message: "Invalid gender selection" });
+    }
+
+    // Validate password - no special characters
+    if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+      return res.status(400).json({ message: "Password cannot contain special characters" });
+    }
+
+    // Check password length
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    // Check if email already exists
+    if (await User.findOne({ email })) {
       return res.status(400).json({ message: "Email already registered" });
+    }
 
-    if (await User.findOne({ username }))
+    // Check if username already exists
+    if (await User.findOne({ username })) {
       return res.status(400).json({ message: "Username taken" });
+    }
 
+    // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
+    // Create new user
     const newUser = await User.create({
       email,
       username,
+      age: ageNum,
+      gender,
       passwordHash: hashed,
       displayName: username,
       bio: "",
@@ -563,14 +631,17 @@ app.post("/api/auth/signup", async (req, res) => {
       followersCount: 0,
       followingCount: 0,
     });
+    logplease(req,'SIGNUP', 'New user signed up', { userId: newUser._id, username: newUser.username });
 
-    // ensure JWT secret exists
+   
+
+    // Ensure JWT secret exists
     if (!process.env.JWT_SECRET) {
       console.error("JWT_SECRET not set");
       return res.status(500).json({ message: "Server configuration error" });
     }
 
-    // sign token with multiple common id claims so middleware accepts it
+    // Sign token with multiple common id claims so middleware accepts it
     const userIdStr = newUser._id.toString();
     const token = jwt.sign(
       {
@@ -589,6 +660,8 @@ app.post("/api/auth/signup", async (req, res) => {
       userId: userIdStr,
       email: newUser.email,
       username: newUser.username,
+      age: newUser.age,
+      gender: newUser.gender,
       token,
     });
   } catch (err) {
@@ -633,7 +706,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     const device = req.headers['user-agent'];
     const ip = req.ip || req.connection.remoteAddress;
-    await logger.login(user._id, user.username, device, ip);
+    logplease(req,'LOGIN', 'User logged in', { userId: user._id, username: user.username, device, ip });
 
     // ✅ CHECK IF ADMIN
     const adminUsernames = process.env.ADMIN_USERNAMES?.split(',').map(u => u.trim()) || [];
@@ -701,6 +774,7 @@ app.get("/api/users/me", auth, async (req, res) => {
 });
 
 // SEARCH USERS
+// SEARCH USERS
 app.get("/api/users/search", auth, async (req, res) => {
   try {
     const { q } = req.query;
@@ -709,7 +783,12 @@ app.get("/api/users/search", auth, async (req, res) => {
       return res.json([]);
     }
 
-    const cacheKey = cacheHelper.keys.search(q);
+    const cacheKey = cacheHelper.keys.search(q);  // ✅ add this line
+
+    await logplease(req, 'USER_SEARCH', 'User performed a search', {
+      query: q,
+      userId: req.user._id,
+    });
 
     // Try to get from cache
     const cached = await redisHelpers.getJSON(cacheKey);
@@ -743,6 +822,7 @@ app.get("/api/users/search", auth, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
+
 
 // FOLLOW USER - FIXED
 // REPLACE THE FOLLOW ROUTES IN YOUR server.js WITH THESE FIXED VERSIONS
@@ -788,11 +868,10 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
       });
 
       // ✅ LOG USER FOLLOWS
-      await logger.userFollows(req.user._id, req.user.username, targetUserId);
+      logplease(req,'USER_FOLLOWS', 'User followed another user', { by: me, target: targetUserId });
 
       // ✅ LOG SOMEONE FOLLOWS YOU (for target user)
-      await logger.userFollowedBy(targetUserId, targetUser.username, req.user._id);
-
+     
       // Invalidate follow-related caches
       await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
@@ -865,7 +944,7 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
     });
 
     // ✅ LOG UNFOLLOW (using USER_FOLLOWS event with metadata)
-    await logger.userFollows(req.user._id, req.user.username, targetUserId);
+     logplease(req,'USER_UNFOLLOWS', 'User unfollowed another user', { by: me, target: targetUserId });
 
     // Invalidate follow-related caches
     await cacheHelper.invalidateFollowCaches(me, targetUserId);
@@ -925,6 +1004,10 @@ app.put("/api/users/me", auth, async (req, res) => {
     }).select("-passwordHash");
 
     if (!updated) return res.status(404).json({ message: "User not found" });
+   logplease(req,'PROFILE_UPDATED', 'User updated their profile', { userId: req.user._id, username: req.user.username, updates });
+     if (updates.avatarUrl) {
+      logplease(req,'AVATAR_UPDATED', 'User updated their avatar', { userId: req.user._id, username: req.user.username });
+    }
 
     res.json({
       id: updated._id,
@@ -982,6 +1065,7 @@ app.post("/api/media/upload", auth, async (req, res) => {
       mimeType: mimeType || "application/octet-stream",
       processed: true,
     });
+   logplease(req,'MEDIA_UPLOADED', 'User uploaded new media', { userId: req.user._id, username: req.user.username, mediaId: newMedia._id });
 
     console.log("✅ Media uploaded:", newMedia._id);
     res.status(201).json(newMedia);
@@ -1005,7 +1089,7 @@ app.delete("/api/media/:mediaId", auth, async (req, res) => {
     if (media.ownerId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized to delete this media" });
     }
-
+ logplease('MEDIA_DELETED', 'User deleted media', { userId: req.user._id, username: req.user.username, mediaId: req.params.mediaId });
     await Media.findByIdAndDelete(req.params.mediaId);
 
     console.log("✅ Media deleted:", req.params.mediaId);
@@ -1043,7 +1127,7 @@ app.post("/api/posts", auth, async (req, res) => {
     });
 
     console.log('📝 POST_CREATED: About to log post creation for user:', req.user.username);
-    await logger.postCreated(req.user._id, req.user.username, newPost._id);
+    
     console.log('📝 POST_CREATED: Logger call completed for post:', newPost._id.toString());
 
     // ✅ QUEUE MEDIA PROCESSING JOB IF MEDIA EXISTS
@@ -1283,14 +1367,16 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
     if (likeIndex > -1) {
       // Unlike
       post.likes.splice(likeIndex, 1);
+      logplease(req,'❤️ LIKE_REMOVED', 'User unliked a post', { userId: req.user._id, username: req.user.username, postId: post._id });
+      console.log('❤️ LIKE_REMOVED: About log unlike for user:', req.user.username);
+      
+      console.log(req,'❤️ LIKE_REMOVED: Logger call completed for post:', post._id.toString());
     } else {
       // Like
       post.likes.push(req.user._id);
 
       console.log('❤️ LIKE_ADDED: About to log like for user:', req.user.username);
-      await logger.likeAdded(req.user._id, req.user.username, post._id);
-      console.log('❤️ LIKE_ADDED: Logger call completed for post:', post._id.toString());
-
+    logplease(req,'❤️ LIKE_ADDED', 'User liked a post', { userId: req.user._id, username: req.user.username, postId: post._id });
       // Create notification if liking someone else's post
       if (post.userId.toString() !== req.user._id.toString()) {
         const Notification = require("./models/Notification");
@@ -1335,7 +1421,7 @@ app.delete("/api/posts/:postId", auth, async (req, res) => {
     if (post.userId.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized to delete this post" });
     }
-
+    logplease(req,'🗑️ POST_DELETED', 'User deleted a post', { userId: req.user._id, username: req.user.username, postId: post._id })  ;
     // Delete post
     await Post.findByIdAndDelete(req.params.postId);
 
@@ -1381,12 +1467,7 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
 
     // ✅ LOG COMMENT ADDED
     console.log('💬 COMMENT_ADDED: About to log comment for user:', req.user.username);
-    await logger.commentAdded(
-      req.user._id,
-      req.user.username,
-      req.params.postId,
-      comment._id
-    );
+    logplease(req,'💬 COMMENT_ADDED', 'User added a comment', { userId: req.user._id, username: req.user.username, postId: post._id, commentId: comment._id });
     console.log('💬 COMMENT_ADDED: Logger call completed for comment:', comment._id.toString());
 
     // Update post comments count
@@ -1495,7 +1576,7 @@ app.delete("/api/comments/:commentId", auth, async (req, res) => {
         return res.status(403).json({ message: "Not authorized" });
       }
     }
-
+   logplease(req,'🗑️ COMMENT_DELETED', 'User deleted a comment', { userId: req.user._id, username: req.user.username, commentId: comment._id });
     // Remove comment from post
     await Post.updateOne(
       { _id: comment.post },
@@ -1989,8 +2070,7 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
 app.get("/api/admin/test-log", auth, adminAuth, async (req, res) => {
   try {
     console.log("🧪 Sending test log...");
-    await logger.login('test-123', 'testuser', 'Chrome Browser', '127.0.0.1');
-    
+   
     // Wait a second
     await new Promise(resolve => setTimeout(resolve, 1000));
     
@@ -2109,3 +2189,18 @@ app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
 });*/
 
 
+//logout route 
+// LOGOUT
+app.post("/api/auth/logout", auth, async (req, res) => {
+  try {
+    await logplease(req, 'LOGOUT', 'User logged out', {
+      userId: req.user._id,
+      username: req.user.username,
+    });
+
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Logout error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});

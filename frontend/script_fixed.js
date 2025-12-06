@@ -2082,7 +2082,24 @@ function showInAppToast(title, body, icon, onClick, actionText = "Reply") {
   }
 }
 
-function logout() {
+async function logout() {
+  try {
+    const token = sessionStorage.getItem("token");
+    if (token) {
+      await fetch(`${API_URL}/api/auth/logout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        credentials: "include",
+      });
+    }
+  } catch (err) {
+    console.warn("Logout log failed (ignoring):", err);
+  }
+
+  // Clear token and redirect regardless
   sessionStorage.removeItem("token");
   window.location.href = "/login.html";
 }

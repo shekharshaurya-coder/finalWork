@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>SocialSync — Sign Up</title>
+    <title>SocialSync – Sign Up</title>
     <style>
       * {
         box-sizing: border-box;
@@ -138,6 +138,13 @@
         flex: 1;
       }
 
+      .form-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 18px;
+      }
+
       .form-group {
         margin-bottom: 18px;
       }
@@ -152,7 +159,7 @@
         letter-spacing: 0.5px;
       }
 
-      input {
+      input, select {
         width: 100%;
         padding: 14px 16px;
         background: var(--panel);
@@ -164,12 +171,21 @@
         font-family: inherit;
       }
 
-      input:hover {
+      select {
+        cursor: pointer;
+      }
+
+      select option {
+        background: var(--panel);
+        color: #fff;
+      }
+
+      input:hover, select:hover {
         border-color: var(--border-hover);
         background: rgba(255, 255, 255, 0.02);
       }
 
-      input:focus {
+      input:focus, select:focus {
         outline: none;
         border-color: var(--accent);
         background: rgba(123, 110, 246, 0.05);
@@ -369,6 +385,10 @@
           height: 150px;
         }
 
+        .form-row {
+          grid-template-columns: 1fr;
+        }
+
         .actions {
           flex-direction: column;
         }
@@ -414,7 +434,7 @@
           font-size: 11px;
         }
 
-        input {
+        input, select {
           padding: 12px 14px;
           font-size: 14px;
         }
@@ -464,9 +484,33 @@
               type="text"
               required
               placeholder="johndoe"
-              pattern="[a-zA-Z0-9_]+"
-              title="Only letters, numbers and underscores"
+              title="Must start with a letter"
             />
+          </div>
+
+          <div class="form-row">
+            <div class="form-group">
+              <label for="age">Age</label>
+              <input
+                id="age"
+                type="number"
+                required
+                placeholder="18"
+                min="16"
+                max="120"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="gender">Gender</label>
+              <select id="gender" required>
+                <option value="">Select gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+                <option value="prefer-not-to-say">Prefer not to say</option>
+              </select>
+            </div>
           </div>
 
           <div class="form-group">
@@ -477,6 +521,7 @@
             </div>
             <div class="password-requirements" id="passwordReqs">
               <div class="requirement" id="req-length">• At least 6 characters</div>
+              <div class="requirement" id="req-no-special">• No special characters allowed</div>
             </div>
           </div>
 
@@ -495,25 +540,7 @@
           <div id="loading" class="helper">Creating your account…</div>
         </form>
       </div>
-    <!-- </section>
-        
-          </div>
-
-          <div class="actions">
-            <button id="submitBtn" class="btn btn-primary" type="button">
-              Create Account
-            </button>
-            <a href="/login.html" class="btn btn-ghost">Sign In</a>
-          </div>
-
-          <div id="error" class="error"></div>
-          <div id="success" class="success"></div>
-          <div id="loading" class="helper" style="display: none">
-            Creating your account…
-          </div>
-        </form>
-      </div>
-    </section> -->
+    </section>
 
     <script>
       const submitBtn = document.getElementById("submitBtn");
@@ -552,11 +579,21 @@
       passwordInput.addEventListener("input", () => {
         const password = passwordInput.value;
         const lengthReq = document.getElementById("req-length");
+        const specialReq = document.getElementById("req-no-special");
 
+        // Check length
         if (password.length >= 6) {
           lengthReq.classList.add("met");
         } else {
           lengthReq.classList.remove("met");
+        }
+
+        // Check no special characters
+        const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(password);
+        if (!hasSpecial) {
+          specialReq.classList.add("met");
+        } else {
+          specialReq.classList.remove("met");
         }
       });
 
@@ -583,12 +620,13 @@
 
         const email = document.getElementById("email").value.trim();
         const username = document.getElementById("username").value.trim();
+        const age = parseInt(document.getElementById("age").value);
+        const gender = document.getElementById("gender").value;
         const password = document.getElementById("password").value;
-        const confirmPassword =
-          document.getElementById("confirmPassword").value;
+        const confirmPassword = document.getElementById("confirmPassword").value;
 
         // Validation
-        if (!email || !username || !password || !confirmPassword) {
+        if (!email || !username || !age || !gender || !password || !confirmPassword) {
           showError("All fields are required");
           return;
         }
@@ -598,20 +636,42 @@
           return;
         }
 
+        // Check username starts with letter
+        if (!/^[a-zA-Z]/.test(username)) {
+          showError("Username must start with a letter");
+          return;
+        }
+
         if (username.length < 3) {
           showError("Username must be at least 3 characters");
           return;
         }
 
-        if (!/^[a-zA-Z0-9_]+$/.test(username)) {
-          showError(
-            "Username can only contain letters, numbers and underscores"
-          );
+        if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
+          showError("Username can only contain letters, numbers and underscores");
           return;
         }
 
+        // Check age
+        if (age < 16) {
+          showError("You must be at least 16 years old to sign up");
+          return;
+        }
+
+        if (age > 120 || isNaN(age)) {
+          showError("Please enter a valid age");
+          return;
+        }
+
+        // Check password length
         if (password.length < 6) {
           showError("Password must be at least 6 characters");
+          return;
+        }
+
+        // Check no special characters in password
+        if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
+          showError("Password cannot contain special characters");
           return;
         }
 
@@ -625,14 +685,11 @@
         submitBtn.disabled = true;
 
         try {
-          const response = await fetch(
-            `/api/auth/signup`,
-            {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ email, username, password }),
-            }
-          );
+          const response = await fetch(`/api/auth/signup`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, username, age, gender, password }),
+          });
 
           const data = await response.json();
 
@@ -666,13 +723,11 @@
       });
 
       // Allow Enter key to submit
-      document
-        .getElementById("signupForm")
-        .addEventListener("keypress", (e) => {
-          if (e.key === "Enter") {
-            submitBtn.click();
-          }
-        });
+      document.getElementById("signupForm").addEventListener("keypress", (e) => {
+        if (e.key === "Enter") {
+          submitBtn.click();
+        }
+      });
     </script>
   </body>
 </html>

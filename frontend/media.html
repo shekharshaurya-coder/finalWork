@@ -6,6 +6,608 @@
     <title>SocialSync – Media Library</title>
 
     <style>
+        /* ADD THESE RESPONSIVE STYLES TO YOUR media.html <style> section */
+
+/* Base responsive utilities */
+* {
+    box-sizing: border-box;
+}
+
+/* Tablet and smaller screens */
+@media (max-width: 768px) {
+    .app {
+        flex-direction: column;
+    }
+
+    /* Sidebar becomes top bar */
+    .sidebar {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid #2f3336;
+        flex-direction: row;
+        align-items: center;
+        padding: 10px;
+        height: auto;
+    }
+
+    .sidebar-header {
+        padding: 10px;
+        border-bottom: none;
+        border-right: 1px solid #2f3336;
+    }
+
+    .sidebar-logo {
+        font-size: 20px;
+    }
+
+    .menu {
+        display: flex;
+        flex: 1;
+        justify-content: center;
+        gap: 5px;
+    }
+
+    .menu-link {
+        padding: 8px 15px;
+        font-size: 13px;
+        border-radius: 8px;
+    }
+
+    .menu-link.active {
+        border-left: none;
+        border-bottom: 3px solid #667eea;
+        padding-left: 15px;
+        padding-bottom: 5px;
+    }
+
+    .sidebar-footer {
+        padding: 10px;
+        margin: 0;
+    }
+
+    .logout-btn {
+        padding: 8px 16px;
+        font-size: 13px;
+        white-space: nowrap;
+    }
+
+    /* Main container adjustments */
+    .main-container {
+        height: calc(100vh - 60px);
+    }
+
+    .top-header {
+        padding: 12px 15px;
+    }
+
+    .page-title {
+        font-size: 18px;
+    }
+
+    /* Media grid - 2 columns on tablet */
+    .media-grid {
+        padding: 15px;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 15px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 180px;
+    }
+
+    .media-info {
+        padding: 10px;
+    }
+
+    .media-name {
+        font-size: 14px;
+    }
+
+    .media-caption {
+        font-size: 12px;
+    }
+
+    .media-meta {
+        font-size: 11px;
+    }
+
+    /* Modal adjustments */
+    #postDetailModal > div {
+        max-width: 90%;
+        padding: 15px;
+    }
+
+    .preview-close {
+        top: 15px;
+        right: 20px;
+        font-size: 32px;
+    }
+}
+
+/* Mobile phones */
+@media (max-width: 480px) {
+    /* Sidebar becomes hamburger-friendly */
+    .sidebar {
+        padding: 8px;
+    }
+
+    .sidebar-header {
+        padding: 8px;
+    }
+
+    .sidebar-logo {
+        font-size: 18px;
+    }
+
+    .menu {
+        gap: 3px;
+    }
+
+    .menu-link {
+        padding: 6px 10px;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+
+    .logout-btn {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+
+    /* Main content */
+    .top-header {
+        padding: 10px;
+    }
+
+    .page-title {
+        font-size: 16px;
+    }
+
+    /* Media grid - 1 column on mobile */
+    .media-grid {
+        padding: 10px;
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+
+    .media-card {
+        border-radius: 12px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 200px;
+    }
+
+    .media-info {
+        padding: 12px;
+    }
+
+    .media-name {
+        font-size: 15px;
+        margin-bottom: 8px;
+    }
+
+    .media-caption {
+        font-size: 13px;
+        height: 50px;
+    }
+
+    .empty-message {
+        font-size: 16px;
+        margin-top: 30px;
+        padding: 0 20px;
+    }
+
+    /* Delete button on cards */
+    .media-card button {
+        width: 32px !important;
+        height: 32px !important;
+        font-size: 16px !important;
+        top: 6px !important;
+        right: 6px !important;
+    }
+
+    /* Post detail modal */
+    #postDetailModal {
+        padding: 10px;
+    }
+
+    #postDetailContent {
+        padding: 15px !important;
+        border-radius: 10px !important;
+        max-height: 90vh !important;
+    }
+
+    #postDetailModal button:first-child {
+        top: 10px !important;
+        right: 15px !important;
+        font-size: 32px !important;
+    }
+
+    #postDetailContent img {
+        max-height: 300px !important;
+    }
+
+    #postDetailContent > div:first-child {
+        gap: 10px !important;
+    }
+
+    #postDetailContent > div:first-child > div:first-child {
+        width: 45px !important;
+        height: 45px !important;
+        font-size: 20px !important;
+    }
+
+    /* Preview modal */
+    .preview-modal img,
+    .preview-modal video {
+        max-width: 95%;
+        max-height: 85%;
+    }
+
+    .preview-close {
+        top: 10px;
+        right: 15px;
+        font-size: 28px;
+    }
+}
+
+/* Very small mobile devices */
+@media (max-width: 360px) {
+    .sidebar-logo {
+        font-size: 16px;
+    }
+
+    .menu-link {
+        padding: 5px 8px;
+        font-size: 11px;
+    }
+
+    .logout-btn {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+
+    .page-title {
+        font-size: 14px;
+    }
+
+    .media-grid {
+        padding: 8px;
+        gap: 10px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 180px;
+    }
+
+    .media-info {
+        padding: 10px;
+    }
+
+    .media-name {
+        font-size: 14px;
+    }
+
+    .media-caption {
+        font-size: 12px;
+        height: 45px;
+    }
+
+    .media-meta {
+        font-size: 10px;
+    }
+}
+
+/* Landscape mode on mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .app {
+        flex-direction: row;
+    }
+
+    .sidebar {
+        width: 200px;
+        flex-direction: column;
+        border-right: 1px solid #2f3336;
+        border-bottom: none;
+        height: 100vh;
+    }
+
+    .sidebar-header {
+        border-right: none;
+        border-bottom: 1px solid #2f3336;
+    }
+
+    .menu {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .menu-link {
+        padding: 10px 15px;
+    }
+
+    .menu-link.active {
+        border-bottom: none;
+        border-left: 3px solid #667eea;
+        padding-bottom: 10px;
+        padding-left: 12px;
+    }
+
+    .sidebar-footer {
+        margin-top: auto;
+    }
+
+    .main-container {
+        height: 100vh;
+    }
+
+    .media-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 150px;
+    }
+}
+
+/* Large tablets and small laptops */
+@media (min-width: 769px) and (max-width: 1024px) {
+    .media-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 200px;
+    }
+}
+
+/* Large screens */
+@media (min-width: 1400px) {
+    .sidebar {
+        width: 280px;
+    }
+
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 24px;
+        padding: 30px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 240px;
+    }
+}
+
+/* Extra large screens */
+@media (min-width: 1920px) {
+    .media-grid {
+        grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+        padding: 40px;
+    }
+
+    .media-card img,
+    .media-card video {
+        height: 260px;
+    }
+}
+
+/* Touch device optimizations */
+@media (hover: none) and (pointer: coarse) {
+    /* Bigger touch targets */
+    .menu-link {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+    }
+
+    .logout-btn {
+        min-height: 44px;
+    }
+
+    .media-card {
+        cursor: default;
+    }
+
+    /* Make delete buttons more visible on touch devices */
+    .media-card button {
+        opacity: 0.9;
+    }
+
+    /* Easier modal closing */
+    #postDetailModal button:first-child,
+    .preview-close {
+        background: rgba(0, 0, 0, 0.5);
+        border-radius: 50%;
+        width: 44px;
+        height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+
+    .media-card:hover {
+        transform: none;
+    }
+}
+
+/* Print styles */
+@media print {
+    .sidebar,
+    .logout-btn,
+    #postDetailModal,
+    .preview-modal {
+        display: none !important;
+    }
+
+    .main-container {
+        width: 100%;
+    }
+
+    .media-grid {
+        display: block;
+    }
+
+    .media-card {
+        page-break-inside: avoid;
+        margin-bottom: 20px;
+    }
+
+    .media-card:hover {
+        transform: none;
+        box-shadow: none;
+    }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    .media-card {
+        border: 2px solid #667eea;
+    }
+
+    .menu-link.active {
+        border-left-width: 4px;
+    }
+
+    .delete-btn {
+        border: 2px solid #fff;
+    }
+}
+
+/* Dark mode (already default, but can add overrides) */
+@media (prefers-color-scheme: dark) {
+    /* Already optimized for dark mode */
+}
+
+/* Light mode support (if needed) */
+@media (prefers-color-scheme: light) {
+    body {
+        background: #f0f2f5;
+        color: #1c1e21;
+    }
+
+    .sidebar,
+    .main-container {
+        background: #ffffff;
+    }
+
+    .media-card {
+        background: #f7f8fa;
+        border-color: #e4e6eb;
+    }
+
+    .menu-link {
+        color: #1c1e21;
+    }
+
+    .page-title,
+    .media-name {
+        color: #1c1e21;
+    }
+
+    .media-caption,
+    .media-meta {
+        color: #65676b;
+    }
+}
+
+/* Orientation change handling */
+@media (orientation: portrait) {
+    .media-grid {
+        max-height: calc(100vh - 140px);
+    }
+}
+
+@media (orientation: landscape) {
+    .media-grid {
+        max-height: calc(100vh - 80px);
+    }
+}
+
+/* Scrollbar styling for webkit browsers */
+@media (min-width: 769px) {
+    .media-grid::-webkit-scrollbar {
+        width: 8px;
+    }
+
+    .media-grid::-webkit-scrollbar-track {
+        background: #18191a;
+    }
+
+    .media-grid::-webkit-scrollbar-thumb {
+        background: #3a3b3c;
+        border-radius: 4px;
+    }
+
+    .media-grid::-webkit-scrollbar-thumb:hover {
+        background: #667eea;
+    }
+
+    #postDetailContent::-webkit-scrollbar {
+        width: 6px;
+    }
+
+    #postDetailContent::-webkit-scrollbar-track {
+        background: #18191a;
+    }
+
+    #postDetailContent::-webkit-scrollbar-thumb {
+        background: #3a3b3c;
+        border-radius: 3px;
+    }
+}
+
+/* iOS safe area support */
+@supports (padding: env(safe-area-inset-bottom)) {
+    .sidebar-footer {
+        padding-bottom: calc(20px + env(safe-area-inset-bottom));
+    }
+
+    @media (max-width: 768px) {
+        .sidebar {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+
+        .main-container {
+            padding-bottom: env(safe-area-inset-bottom);
+        }
+    }
+}
+
+/* Foldable device support */
+@media (min-width: 769px) and (max-width: 1024px) and (orientation: portrait) {
+    .media-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* Animation for card removal */
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+}
+
+.media-card.removing {
+    animation: fadeOut 0.3s ease-out forwards;
+}
         body {
             margin: 0;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
