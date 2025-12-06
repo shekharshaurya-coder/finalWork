@@ -1127,7 +1127,7 @@ app.post("/api/posts", auth, async (req, res) => {
     });
 
     console.log('📝 POST_CREATED: About to log post creation for user:', req.user.username);
-    
+    logplease(req,'POST_CREATED', 'User created a new post', { postId: newPost._id, userId: req.user._id, username: req.user.username, hasMedia: !!mediaUrl });
     console.log('📝 POST_CREATED: Logger call completed for post:', newPost._id.toString());
 
     // ✅ QUEUE MEDIA PROCESSING JOB IF MEDIA EXISTS
@@ -1139,6 +1139,7 @@ app.post("/api/posts", auth, async (req, res) => {
           filePath: mediaUrl,
           type: type || "text",
         });
+        logplease(req,'MEDIA_PROCESSING_QUEUED', 'Media processing job queued for post', { postId: newPost._id, userId: req.user._id, username: req.user.username });
         console.log("✅ Media processing job queued for post:", newPost._id);
       } catch (queueErr) {
         console.error("❌ Failed to queue media job:", queueErr);
