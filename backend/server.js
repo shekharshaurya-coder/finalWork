@@ -1205,24 +1205,24 @@ app.get("/api/posts/feed", auth, async (req, res) => {
       .populate("userId", "username displayName avatarUrl") // Use populate
       .lean();
 
-    const formattedPosts = posts.map((post) => {
-      const postUser = post.userId || {};
-      return {
-        id: post._id,
-        username: postUser.username || post.username,
-        displayName: postUser.displayName || postUser.username,
-        avatar: postUser.avatarUrl || "👤",
-        content: post.content,
-        mediaUrl: post.mediaUrl,
-        timestamp: formatTimestamp(post.createdAt), // For display
-        createdAt: post.createdAt, // For cursor
-        likes: Array.isArray(post.likes) ? post.likes.length : 0,
-        comments: Array.isArray(post.comments) ? post.comments.length : 0,
-        liked:
-          Array.isArray(post.likes) &&
-          post.likes.some((id) => id.toString() === req.user._id.toString()),
-      };
-    });
+    // Example for GET /api/posts/feed
+const formattedPosts = posts.map((post) => {
+  const postUser = post.userId || {};
+  return {
+    id: post._id,
+    username: postUser.username || post.username,
+    displayName: postUser.displayName || postUser.username,
+    avatar: postUser.avatarUrl || "👤",
+    content: post.content,
+    mediaUrl: post.mediaUrl,
+    timestamp: formatTimestamp(post.createdAt),
+    createdAt: post.createdAt,
+    likes: Array.isArray(post.likes) ? post.likes.length : 0,
+    commentCount: post.commentCount || 0, // ✅ Use commentCount field
+    comments: post.commentCount || 0, // ✅ Also for compatibility
+    liked: Array.isArray(post.likes) && post.likes.some(id => id.toString() === req.user._id.toString()),
+  };
+});
 
     const nextCursor =
       formattedPosts.length === limit
@@ -1444,11 +1444,12 @@ app.delete("/api/posts/:postId", auth, async (req, res) => {
 // POST A COMMENT
 app.post("/api/posts/:postId/comments", auth, async (req, res) => {
   try {
-    const { text } = req.body;
+    const { text, content } = req.body; // Accept both 'text' and 'content'
+    const commentText = text || content;
     const Comment = require("./models/Comment");
     const Notification = require("./models/Notification");
 
-    if (!text || text.trim().length === 0) {
+    if (!commentText || commentText.trim().length === 0) {
       return res.status(400).json({ message: "Comment cannot be empty" });
     }
 
@@ -1457,31 +1458,36 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
       return res.status(404).json({ message: "Post not found" });
     }
 
-    // Create comment
+    // Create comment with 'text' field (matching Comment schema)
     const comment = new Comment({
       post: req.params.postId,
       author: req.user._id,
-      text: text.trim(),
+      text: commentText.trim(),
     });
 
     await comment.save();
 
-    // ✅ LOG COMMENT ADDED
     console.log('💬 COMMENT_ADDED: About to log comment for user:', req.user.username);
-    logplease(req,'💬 COMMENT_ADDED', 'User added a comment', { userId: req.user._id, username: req.user.username, postId: post._id, commentId: comment._id });
-    console.log('💬 COMMENT_ADDED: Logger call completed for comment:', comment._id.toString());
+    await logplease(req,'💬 COMMENT_ADDED', 'User added a comment', { 
+      userId: req.user._id, 
+      username: req.user.username, 
+      postId: post._id, 
+      commentId: comment._id 
+    });
 
-    // Update post comments count
-    if (!post.comments) post.comments = [];
-    post.comments.push(comment._id);
-    await post.save();
+    // ✅ Update post: add comment reference AND increment count
+    await Post.updateOne(
+      { _id: req.params.postId },
+      { 
+        $push: { comments: comment._id },
+        $inc: { commentCount: 1 }
+      }
+    );
 
-    // Invalidate feed and comments cache
+    // Invalidate caches
     await cacheHelper.invalidateFeedCache();
     if (redisHelpers && redisHelpers.client()) {
-      await redisHelpers
-        .client()
-        .del(cacheHelper.keys.comments(req.params.postId));
+      await redisHelpers.client().del(cacheHelper.keys.comments(req.params.postId));
     }
 
     // Create notification for post author
@@ -1494,17 +1500,20 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
         targetId: post._id,
         read: false,
       });
-      // Invalidate notification cache for post author
       await cacheHelper.invalidateNotificationCache(post.userId);
     }
 
     // Populate author info
     await comment.populate("author", "username displayName avatarUrl");
 
+    // ✅ Return with proper field names
     res.status(201).json({
-      id: comment._id,
+      _id: comment._id,
+      id: comment._id, // For compatibility
       text: comment.text,
+      content: comment.text, // For compatibility
       author: {
+        _id: comment.author._id,
         id: comment.author._id,
         username: comment.author.username,
         displayName: comment.author.displayName || comment.author.username,
@@ -1519,11 +1528,12 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
 });
 
 // GET COMMENTS FOR A POST
+// GET COMMENTS FOR A POST
 app.get("/api/posts/:postId/comments", async (req, res) => {
   try {
     const cacheKey = cacheHelper.keys.comments(req.params.postId);
 
-    // Try to get from cache
+    // Try cache
     const cached = await redisHelpers.getJSON(cacheKey);
     if (cached) {
       console.log("✅ Comments cache hit for post:", req.params.postId);
@@ -1534,13 +1544,16 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
 
     const comments = await Comment.find({ post: req.params.postId })
       .populate("author", "username displayName avatarUrl")
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: 1 }) // Oldest first for chat-like display
       .lean();
 
     const formattedComments = comments.map((c) => ({
-      id: c._id,
+      _id: c._id,
+      id: c._id, // For compatibility
       text: c.text,
+      content: c.text, // For compatibility
       author: {
+        _id: c.author._id,
         id: c.author._id,
         username: c.author.username,
         displayName: c.author.displayName || c.author.username,
@@ -1561,6 +1574,7 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
 });
 
 // DELETE A COMMENT
+// DELETE A COMMENT - ALREADY CORRECT IN YOUR CODE
 app.delete("/api/comments/:commentId", auth, async (req, res) => {
   try {
     const Comment = require("./models/Comment");
@@ -1570,24 +1584,33 @@ app.delete("/api/comments/:commentId", auth, async (req, res) => {
       return res.status(404).json({ message: "Comment not found" });
     }
 
-    // Check if user is comment author or post author
+    // Check authorization
     if (comment.author.toString() !== req.user._id.toString()) {
       const post = await Post.findById(comment.post);
       if (post.userId.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Not authorized" });
       }
     }
-   logplease(req,'🗑️ COMMENT_DELETED', 'User deleted a comment', { userId: req.user._id, username: req.user.username, commentId: comment._id });
-    // Remove comment from post
+
+    await logplease(req,'🗑️ COMMENT_DELETED', 'User deleted a comment', { 
+      userId: req.user._id, 
+      username: req.user.username, 
+      commentId: comment._id 
+    });
+
+    // ✅ Remove comment from post AND decrement count
     await Post.updateOne(
       { _id: comment.post },
-      { $pull: { comments: comment._id } }
+      { 
+        $pull: { comments: comment._id },
+        $inc: { commentCount: -1 }
+      }
     );
 
     // Delete comment
     await Comment.findByIdAndDelete(req.params.commentId);
 
-    res.json({ message: "Comment deleted" });
+    res.json({ message: "Comment deleted", success: true });
   } catch (err) {
     console.error("Delete comment error:", err);
     res.status(500).json({ message: "Server error" });

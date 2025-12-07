@@ -1236,11 +1236,9 @@ async function toggleComments(postId) {
   }
 
   if (commentsSection.style.display === 'none') {
-    // Show comments and load them
     commentsSection.style.display = 'block';
     await loadComments(postId);
   } else {
-    // Hide comments
     commentsSection.style.display = 'none';
   }
 }
@@ -1264,7 +1262,42 @@ async function loadComments(postId) {
       return;
     }
 
-    commentsList.innerHTML = comments.map(comment => createCommentHTML(comment, postId)).join('');
+    commentsList.innerHTML = comments.map(comment => {
+      const author = comment.author || {};
+      const commentId = comment._id || comment.id;
+      const commentText = comment.text || comment.content || '';
+      const avatar = author.avatarUrl 
+        ? `<img src="${author.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
+        : "👤";
+
+      const isMyComment = currentUser && (currentUser.id === author.id || currentUser._id === author._id || currentUser.id === author._id);
+      
+      return `
+        <div class="comment-item" data-comment-id="${commentId}" style="display:flex;gap:10px;padding:12px;background:#18191a;border-radius:8px;transition:all 0.3s ease;">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
+            ${avatar}
+          </div>
+          <div style="flex:1;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+              <div>
+                <span style="font-weight:600;color:#e4e6eb;font-size:14px;">${author.displayName || author.username || 'Unknown'}</span>
+                <span style="color:#8b8d91;font-size:12px;margin-left:8px;">@${author.username || 'unknown'}</span>
+              </div>
+              ${isMyComment ? `
+                <button 
+                  onclick="deleteComment('${commentId}', '${postId}')" 
+                  style="background:none;border:none;color:#ff7979;cursor:pointer;font-size:18px;padding:4px 8px;"
+                  title="Delete comment">
+                  🗑️
+                </button>
+              ` : ''}
+            </div>
+            <div style="color:#e4e6eb;font-size:14px;margin-bottom:5px;">${commentText}</div>
+            <div style="color:#8b8d91;font-size:12px;">${formatTimestamp(comment.createdAt)}</div>
+          </div>
+        </div>
+      `;
+    }).join('');
 
   } catch (error) {
     console.error('Error loading comments:', error);
@@ -1323,40 +1356,39 @@ async function addComment(postId) {
       return;
     }
 
-    // Disable input while submitting
     input.disabled = true;
 
+    // ✅ Send with 'content' field (backend accepts both 'text' and 'content')
     const result = await fetchAPI(`/api/posts/${postId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ content: text })
     });
 
-    console.log('Comment added:', result);
+    console.log('✅ Comment added:', result);
 
     // Clear input
     input.value = '';
     input.disabled = false;
 
-    // Reload comments
-    await loadComments(postId);
-
-    // Update comment count
+    // ✅ Immediately increment count
     const countElement = document.getElementById(`comments-count-${postId}`);
     if (countElement) {
       const currentCount = parseInt(countElement.textContent) || 0;
       countElement.textContent = currentCount + 1;
+      console.log(`📊 Updated comment count from ${currentCount} to ${currentCount + 1}`);
     }
 
+    // Reload comments to show the new one
+    await loadComments(postId);
+
   } catch (error) {
-    console.error('Error adding comment:', error);
+    console.error('❌ Error adding comment:', error);
     alert('Failed to add comment: ' + (error.message || 'Unknown error'));
     
-    // Re-enable input
     const input = document.getElementById(`comment-input-${postId}`);
     if (input) input.disabled = false;
   }
 }
-
 // Delete a comment
 async function deleteComment(commentId, postId) {
   if (!confirm('Are you sure you want to delete this comment?')) {
@@ -1364,24 +1396,56 @@ async function deleteComment(commentId, postId) {
   }
 
   try {
+    // Find and immediately fade out the comment element
+    const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
+    if (commentElement) {
+      commentElement.style.opacity = '0.5';
+      commentElement.style.pointerEvents = 'none';
+    }
+
+    // Delete from backend
     await fetchAPI(`/api/comments/${commentId}`, {
       method: 'DELETE'
     });
 
-    console.log('Comment deleted');
+    console.log('✅ Comment deleted successfully');
 
-    // Reload comments
-    await loadComments(postId);
-
-    // Update comment count
+    // ✅ Immediately update count
     const countElement = document.getElementById(`comments-count-${postId}`);
     if (countElement) {
       const currentCount = parseInt(countElement.textContent) || 0;
-      countElement.textContent = Math.max(0, currentCount - 1);
+      const newCount = Math.max(0, currentCount - 1);
+      countElement.textContent = newCount;
+      console.log(`📊 Updated count from ${currentCount} to ${newCount}`);
+    }
+
+    // Remove from DOM with animation
+    if (commentElement) {
+      commentElement.style.transition = 'all 0.3s ease';
+      commentElement.style.opacity = '0';
+      commentElement.style.transform = 'translateX(-20px)';
+      
+      setTimeout(() => {
+        commentElement.remove();
+        
+        // Check if there are no comments left
+        const commentsList = document.getElementById(`comments-list-${postId}`);
+        if (commentsList && commentsList.children.length === 0) {
+          commentsList.innerHTML = '<div style="text-align:center;color:#8b8d91;padding:10px;">No comments yet. Be the first to comment!</div>';
+        }
+      }, 300);
     }
 
   } catch (error) {
-    console.error('Error deleting comment:', error);
+    console.error('❌ Error deleting comment:', error);
+    
+    // Restore the comment element if deletion failed
+    const commentElement = document.querySelector(`[data-comment-id="${commentId}"]`);
+    if (commentElement) {
+      commentElement.style.opacity = '1';
+      commentElement.style.pointerEvents = 'auto';
+    }
+    
     alert('Failed to delete comment: ' + (error.message || 'Unknown error'));
   }
 }
