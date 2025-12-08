@@ -209,86 +209,113 @@
         </div>
 
     </div>
+     <!-- SHARE MODAL -->
+    <div id="shareModal" class="share-modal hidden">
+      <div class="share-modal-backdrop" onclick="closeShareModal()"></div>
 
-    <script src="script_fixed.js"></script>
+      <div class="share-modal-body">
+        <div class="share-modal-header">
+          <span>Share in chat</span>
+          <button class="close-btn" onclick="closeShareModal()">✕</button>
+        </div>
+
+        <div class="share-modal-content">
+          <input
+            id="shareSearchInput"
+            type="text"
+            placeholder="Search users..."
+            oninput="searchUsersForShare()"
+          />
+
+          <div id="shareSearchResults"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN SCRIPTS -->
+    <script src="script.js"></script>
     <script>
-      // ✅ FIXED: Update sidebar badges with proper auth
-    
-  // ✅ FIXED: Update sidebar badges with proper auth
-  async function updateSidebarMessagesBadge() {
-    try {
-    // Get token from sessionStorage
-    let token = sessionStorage.getItem('token');
-      if (!token) {
-        console.log('No token found - skipping badge update');
-        return;
-      }
-      
-      // Clean token (remove any wrapping quotes)
-      token = token.replace(/^"(.*)"$/, '$1').trim();
-      
-      console.log('📊 Fetching notification and message counts...');
-      
-      // Get notification count
-      const notifRes = await fetch('/api/notifications/unread/count', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+      // Update sidebar badges with proper auth
+      async function updateSidebarMessagesBadge() {
+        try {
+          // Get token from sessionStorage
+          let token = sessionStorage.getItem('token');
+          if (!token) {
+            console.log('No token found - skipping badge update');
+            return;
+          }
+
+          // Clean token (remove any wrapping quotes)
+          token = token.replace(/^"(.*)"$/, '$1').trim();
+
+          console.log('📊 Fetching notification and message counts...');
+
+          // Get notification count
+          const notifRes = await fetch('/api/notifications/unread/count', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          // Get message count
+          const msgRes = await fetch('/api/messages/unread/count', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+
+          if (notifRes.ok) {
+            const notifData = await notifRes.json();
+            console.log('✅ Notification count:', notifData.count);
+
+            // Update notification badge (bell icon)
+            const notificationBadge = document.getElementById('notificationBadge');
+            if (notifData.count > 0 && notificationBadge) {
+              notificationBadge.textContent = notifData.count;
+              notificationBadge.style.display = 'inline-block';
+            } else if (notificationBadge) {
+              notificationBadge.style.display = 'none';
+            }
+          }
+
+          if (msgRes.ok) {
+            const msgData = await msgRes.json();
+            console.log('✅ Message count:', msgData.count);
+
+            // Update messages badge
+            const messagesBadge = document.getElementById('sidebarMessagesBadge');
+            if (msgData.count > 0 && messagesBadge) {
+              messagesBadge.textContent = msgData.count;
+              messagesBadge.style.display = 'inline-block';
+            } else if (messagesBadge) {
+              messagesBadge.style.display = 'none';
+            }
+          }
+
+        } catch (e) {
+          console.error('Error updating badges:', e);
         }
+      }
+
+      // Run on page load
+      document.addEventListener('DOMContentLoaded', () => {
+        console.log('🚀 Page loaded - updating badges...');
+        updateSidebarMessagesBadge();
+
+        // Update every 30 seconds
+        setInterval(updateSidebarMessagesBadge, 30000);
       });
-      
-      // Get message count
-      const msgRes = await fetch('/api/messages/unread/count', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (notifRes.ok) {
-        const notifData = await notifRes.json();
-        console.log('✅ Notification count:', notifData.count);
-        
-        // Update notification badge (bell icon)
-        const notificationBadge = document.getElementById('notificationBadge');
-        if (notifData.count > 0 && notificationBadge) {
-          notificationBadge.textContent = notifData.count;
-          notificationBadge.style.display = 'inline-block';
-        } else if (notificationBadge) {
-          notificationBadge.style.display = 'none';
-        }
-      }
-      
-      if (msgRes.ok) {
-        const msgData = await msgRes.json();
-        console.log('✅ Message count:', msgData.count);
-        
-        // Update messages badge
-        const messagesBadge = document.getElementById('sidebarMessagesBadge');
-        if (msgData.count > 0 && messagesBadge) {
-          messagesBadge.textContent = msgData.count;
-          messagesBadge.style.display = 'inline-block';
-        } else if (messagesBadge) {
-          messagesBadge.style.display = 'none';
-        }
-      }
-      
-    } catch (e) {
-      console.error('Error updating badges:', e);
-    }
-  }
-  
-  // Run on page load
-  document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 Page loaded - updating badges...');
     updateSidebarMessagesBadge();
-    
+
     // Update every 30 seconds
     setInterval(updateSidebarMessagesBadge, 30000);
   });
-</script>
-    
-</body>
+    </script>
+  </body>
 </html>

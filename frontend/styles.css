@@ -1375,3 +1375,116 @@ input[id^="comment-input-"] {
 input[id^="comment-input-"]:hover {
   border-color: #4a5568;
 }
+.share-modal.hidden {
+  display: none;
+}
+
+.share-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.share-modal-body {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 420px;
+  background: #18191a;
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.share-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: #e4e6eb;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+.share-modal-header .close-btn {
+  background: transparent;
+  border: none;
+  color: #b0b3b8;
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.share-modal-content input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: none;
+  outline: none;
+  background: #242526;
+  color: #e4e6eb;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+#shareSearchResults {
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.share-result-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #242526;
+  margin-bottom: 8px;
+}
+
+.share-result-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  font-size: 20px;
+}
+
+.share-result-info {
+  flex: 1;
+}
+
+.share-result-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #e4e6eb;
+}
+
+.share-result-username {
+  font-size: 12px;
+  color: #8b8d91;
+}
+
+.share-result-send-btn {
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: none;
+  background: #667eea;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  flex-shrink: 0;
+}

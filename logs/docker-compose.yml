@@ -1,10 +1,13 @@
-version: '3.8'
+version: "3.8"
+
 services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:7.15.0
+    container_name: elasticsearch
     environment:
       - discovery.type=single-node
-      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - xpack.security.enabled=false
     ports:
       - "9200:9200"
     volumes:
@@ -12,22 +15,24 @@ services:
 
   logstash:
     image: docker.elastic.co/logstash/logstash:7.15.0
+    container_name: logstash
+    depends_on:
+      - elasticsearch
     volumes:
-      - ../logs/logstash.conf:/usr/share/logstash/pipeline/logstash.conf
+      - ./logstash.conf:/usr/share/logstash/pipeline/logstash.conf
     ports:
       - "5000:5000"
       - "5000:5000/udp"
-    depends_on:
-      - elasticsearch
 
   kibana:
     image: docker.elastic.co/kibana/kibana:7.15.0
-    ports:
-      - "5601:5601"
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    container_name: kibana
     depends_on:
       - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
 
 volumes:
   elasticsearch_data:

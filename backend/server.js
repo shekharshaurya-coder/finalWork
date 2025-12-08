@@ -2170,26 +2170,37 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
 // Get users
 app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
   try {
+    console.log("📊 Fetching all users for admin panel...");
+    
+    // ✅ FIX: Sort by createdAt descending (newest first) and remove/increase limit
     const users = await User.find()
-      .select("username displayName followersCount followingCount")
-      .limit(20)
+      .select("username displayName followersCount followingCount createdAt")
+      .sort({ createdAt: -1 }) // ✅ Newest users first
+      .limit(100) // ✅ Increased from 20 to 100
       .lean();
+    
+    console.log(`✅ Found ${users.length} users`);
     
     const usersWithPosts = await Promise.all(users.map(async (user) => {
       const postsCount = await Post.countDocuments({ userId: user._id });
       return {
-        ...user,
-        postsCount
+        _id: user._id,
+        username: user.username,
+        displayName: user.displayName || user.username,
+        followersCount: user.followersCount || 0,
+        followingCount: user.followingCount || 0,
+        postsCount,
+        createdAt: user.createdAt // Include for debugging
       };
     }));
 
+    console.log("📤 Sending users to admin panel:", usersWithPosts.length);
     res.json({ users: usersWithPosts });
   } catch (error) {
-    console.error('Users error:', error);
-    res.status(500).json({ error: 'Failed to fetch users' });
+    console.error('❌ Admin users endpoint error:', error);
+    res.status(500).json({ error: 'Failed to fetch users', details: error.message });
   }
 });
-
 
 // Get active users
 /*app.get("/api/admin/users", auth, adminAuth, async (req, res) => {

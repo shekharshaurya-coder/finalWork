@@ -75,38 +75,26 @@ let currentUser = null;
 
   console.log("✅ Auth check passed - continuing to load page");
 })();
-
-// ===== EXAMPLE: How your existing code should check auth =====
-// If you have code that redirects to login, make sure it's NOT running immediately
-// Bad example:
-// if (!localStorage.getItem('token')) window.location.href = '/login.html';
-
-// Good example:
-// document.addEventListener('DOMContentLoaded', () => {
-//   // Auth check already happened above, so just verify token exists
-//   if (!localStorage.getItem('token')) {
-//     // This should rarely happen since the check above redirects first
-//     return;
-//   }
-//   // ... rest of your code
-// });
-
 // ============== API HELPER (SINGLE DEFINITION) ==============
 async function fetchAPI(endpoint, options = {}) {
   const token = options.token || sessionStorage.getItem("token") || "";
 
-  const defaultOptions = {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    credentials: "include",
+  // base headers
+  const defaultHeaders = {
+    "Content-Type": "application/json",
   };
+  if (token) {
+    defaultHeaders["Authorization"] = `Bearer ${token}`;
+  }
 
   const response = await fetch(`${API_URL}${endpoint}`, {
-    ...defaultOptions,
+    credentials: "include",
+    // allow caller to override method, body, etc.
     ...options,
-    headers: { ...defaultOptions.headers, ...(options.headers || {}) },
+    headers: {
+      ...defaultHeaders,
+      ...(options.headers || {}),
+    },
   });
 
   if (response.status === 401) {
@@ -123,8 +111,10 @@ async function fetchAPI(endpoint, options = {}) {
   }
 
   const data = await response.json();
-  if (!response.ok)
+  if (!response.ok) {
     throw new Error(data.message || `Request failed (${response.status})`);
+  }
+
   return data;
 }
 
@@ -234,23 +224,7 @@ async function init() {
 
 // Also call after sending/reading messages:
 // After sending a message:
-socket.on("message_sent", (message) => {
-  console.log("✅ Message sent:", message);
-  appendMessageToChat(message);
-  updateSidebarMessagesBadge(); // 🔥 ADD THIS
-});
 
-// After receiving a message:
-socket.on("new_message", (message) => {
-  console.log("📩 New message received:", message);
-  handleNewMessage(message);
-  updateSidebarMessagesBadge(); // 🔥 ADD THIS
-  try {
-    showDesktopNotification(message);
-  } catch (e) {
-    console.warn("Desktop notification failed", e);
-  }
-});
 
 
     /////////////////////////
@@ -309,867 +283,17 @@ async function loadUserData() {
     console.error("Error loading user:", error);
   }
 }
-// ADD THIS TO THE TOP OF YOUR script.js (after API_URL declaration)
 
-// ============== SOCKET.IO CLIENT ==============
-let socket = null;
-let currentConversation = null;
-let onlineUsers = new Set();
 
-// Initialize Socket.IO connection
-function initSocket() {
-  // Ask user for permission to show desktop notifications
-  try {
-    requestNotificationPermission();
-  } catch (e) {
-    console.warn("Notification permission helper missing");
-  }
-
-  const token = sessionStorage.getItem("token");
-
-  if (!token || socket) return;
-
-  // Connect to Socket.IO server using dynamic URL
-  socket = io(`http://${window.location.hostname}:3000`, {
-    auth: {
-      token: token,
-    },
-  });
-
-  // Connection established
-  socket.on("connect", () => {
-    console.log("✅ Socket.IO connected");
-  });
-
-  // Connection error
-  socket.on("connect_error", (error) => {
-    console.error("❌ Socket.IO connection error:", error);
-  });
-
-  // User came online
-  socket.on("user_online", (data) => {
-    console.log("👤 User online:", data.username);
-    onlineUsers.add(data.userId);
-    updateOnlineStatus();
-  });
-
-  // User went offline
-  socket.on("user_offline", (data) => {
-    console.log("👤 User offline:", data.userId);
-    onlineUsers.delete(data.userId);
-    updateOnlineStatus();
-  });
-
-  // Online users list
-  socket.on("online_users", (users) => {
-    onlineUsers = new Set(users);
-    updateOnlineStatus();
-  });
-
-  // New message received
-  socket.on("new_message", (message) => {
-    console.log("📩 New message received:", message);
-    handleNewMessage(message);
-    try {
-      showDesktopNotification(message);
-    } catch (e) {
-      console.warn("Desktop notification failed", e);
-    }
-  });
-
-  // Message was sent successfully
-  socket.on("message_sent", (message) => {
-    console.log("✅ Message sent:", message);
-    appendMessageToChat(message);
-  });
-
-  // Message was delivered
-  socket.on("message_delivered", (data) => {
-    console.log("✅ Message delivered:", data.messageId);
-    updateMessageStatus(data.messageId, "delivered");
-  });
-
-  // Messages were read
-  socket.on("messages_read", (data) => {
-    console.log("✅ Messages read in conversation:", data.conversationId);
-    if (currentConversation === data.conversationId) {
-      markMessagesAsRead();
-    }
-  });
-
-  // Someone is typing
-  socket.on("user_typing", (data) => {
-    showTypingIndicator(data);
-  });
-
-  // Disconnect
-  socket.on("disconnect", () => {
-    console.log("❌ Socket.IO disconnected");
-  });
-}
-
-// ============== MESSAGING FUNCTIONS ==============
-
-// Load conversations list
-// fallback placeholder (uploaded file you used)
-const PLACEHOLDER_AVATAR = "monkey.jpg";
-// Close chat (same behavior as back but clearer name)
-function closeChat() {
-  backToConversations();
-}
-
-// Robust, defensive loadConversations() to replace the broken one
-async function loadConversations() {
-  try {
-    console.log("[messages] loading conversations...");
-    const conversations = await fetchAPI("/api/messages/conversations");
-
-    const container = document.getElementById("conversationsList");
-    container.style.display = "block";
-    container.innerHTML = "";
-
-    if (!Array.isArray(conversations)) {
-      console.warn("[messages] expected array but got:", conversations);
-      container.innerHTML = `<div style="padding:20px;text-align:center;color:#8b8d91;">
-        Debug: unexpected response (see console).</div>`;
-      return;
-    }
-
-    if (conversations.length === 0) {
-      container.innerHTML =
-        '<div style="padding:20px;text-align:center;color:#8b8d91;">No conversations yet</div>';
-      return;
-    }
-
-    container.innerHTML = conversations
-      .map((conv) => {
-        const other = conv.otherUser || conv.user || conv.participant || {};
-        const otherId = other.id || other._id || other.userId || "";
-        const displayName =
-          other.displayName ||
-          other.name ||
-          other.fullName ||
-          other.username ||
-          "Unknown";
-        const username =
-          other.username || (other.email ? other.email.split("@")[0] : "user");
-        const avatar = other.avatarUrl || other.avatar || "";
-        const unreadCount = conv.unreadCount ?? 0;
-        const lastMessageText =
-          (conv.lastMessage && conv.lastMessage.text) || "";
-        const lastCreated =
-          (conv.lastMessage && conv.lastMessage.createdAt) || "";
-
-        const lastMessagePreview =
-          lastMessageText.length > 60
-            ? lastMessageText.substring(0, 60) + "..."
-            : lastMessageText;
-
-        const isOnline =
-          typeof onlineUsers !== "undefined" &&
-          onlineUsers &&
-          (onlineUsers.has ? onlineUsers.has(otherId) : false);
-
-        const safeOtherId = ("" + otherId).replace(/'/g, "\\'");
-        const safeUsername = ("" + username).replace(/'/g, "\\'");
-        const safeDisplayName = ("" + displayName).replace(/'/g, "\\'");
-        const safeAvatar = ("" + avatar).replace(/'/g, "\\'");
-
-        // 🔥 HIGHLIGHT UNREAD CONVERSATIONS
-        const isUnread = unreadCount > 0;
-        const bgColor = isUnread ? "rgba(102, 126, 234, 0.15)" : "transparent";
-        const textWeight = isUnread ? "600" : "400";
-
-        return `
-        <div class="conversation-item" 
-             onclick="openConversation('${safeOtherId}', '${safeUsername}', '${safeDisplayName}', '${safeAvatar}', '${conv.conversationId || otherId || ""}')" 
-             style="padding:12px;border-bottom:1px solid #2f3336;cursor:pointer;background:${bgColor};transition:0.2s;">
-          <div style="display:flex;align-items:center;gap:12px;">
-            <div style="position:relative;flex-shrink:0;">
-              <div style="width:50px;height:50px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
-                ${
-                  avatar
-                    ? `<img src="${avatar}" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.src='monkey.jpg'">`
-                    : `<img src="monkey.jpg" style="width:100%;height:100%;object-fit:cover;">`
-                }
-              </div>
-              ${
-                isOnline
-                  ? '<div style="position:absolute;bottom:0;right:0;width:12px;height:12px;background:#00d084;border:2px solid #242526;border-radius:50%;"></div>'
-                  : ""
-              }
-            </div>
-
-            <div style="flex:1;min-width:0;">
-              <div style="display:flex;justify-content:space-between;align-items:center;">
-                <div style="font-weight:${textWeight};color:#e4e6eb;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(
-          displayName
-        )}</div>
-                <div style="font-size:12px;color:#8b8d91;">${
-                  lastCreated ? formatMessageTime(lastCreated) : ""
-                }</div>
-              </div>
-              <div style="font-size:14px;color:${
-                isUnread ? "#e4e6eb" : "#8b8d91"
-              };font-weight:${textWeight};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-                ${escapeHtml(lastMessagePreview)}
-              </div>
-            </div>
-
-            ${
-              unreadCount > 0
-                ? `<div style="background:#667eea;color:white;padding:6px;border-radius:12px;font-size:12px;font-weight:600;margin-left:8px;min-width:24px;text-align:center;">${unreadCount}</div>`
-                : ""
-            }
-          </div>
-        </div>
-      `;
-      })
-      .join("");
-
-    console.log("[messages] rendered", conversations.length, "conversations");
-  } catch (error) {
-    console.error("Error loading conversations:", error);
-    const container = document.getElementById("conversationsList");
-    container.innerHTML =
-      '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load conversations</div>';
-  }
-}
-
-// minimal html-escape helper (used above)
-function escapeHtml(str = "") {
-  return String(str).replace(
-    /[&<>"']/g,
-    (s) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[
-        s
-      ])
-  );
-}
-
-// Search users to message
-let messageSearchTimeout;
-async function searchUsersToMessage() {
-  const query = document.getElementById("messageSearchInput").value.trim();
-  const resultsContainer = document.getElementById("messageSearchResults");
-
-  clearTimeout(messageSearchTimeout);
-
-  if (query.length < 2) {
-    resultsContainer.style.display = "none";
-    resultsContainer.innerHTML = "";
-    document.getElementById("conversationsList").style.display = "block";
-    return;
-  }
-
-  messageSearchTimeout = setTimeout(async () => {
-    try {
-      resultsContainer.style.display = "block";
-      document.getElementById("conversationsList").style.display = "none";
-      resultsContainer.innerHTML =
-        '<div style="padding:20px;text-align:center;color:#8b8d91;">Searching...</div>';
-
-      const users = await fetchAPI(
-        `/api/users/search?q=${encodeURIComponent(query)}`
-      );
-
-      if (!users || users.length === 0) {
-        resultsContainer.innerHTML =
-          '<div style="padding:20px;text-align:center;color:#8b8d91;">No users found</div>';
-        return;
-      }
-
-      resultsContainer.innerHTML = users
-        .map((user) => {
-          const isOnline = onlineUsers.has(user.id);
-          return `
-                    <div onclick="startConversation('${user.id}', '${
-            user.username
-          }', '${user.displayName || user.username}', '${
-            user.avatarUrl || ""
-          }')" style="padding:15px;border-bottom:1px solid #2f3336;cursor:pointer;transition:0.2s;display:flex;align-items:center;gap:12px;">
-                        <div style="position:relative;">
-                            <div style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;">
-                                ${
-                                  user.avatarUrl
-                                    ? `<img src="${user.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
-                                    : "👤"
-                                }
-                            </div>
-                            ${
-                              isOnline
-                                ? '<div style="position:absolute;bottom:0;right:0;width:14px;height:14px;background:#00d084;border:2px solid #242526;border-radius:50%;"></div>'
-                                : ""
-                            }
-                        </div>
-                        <div style="flex:1;">
-                            <div style="font-weight:600;color:#e4e6eb;">${
-                              user.displayName || user.username
-                            }</div>
-                            <div style="font-size:13px;color:#8b8d91;">@${
-                              user.username
-                            }</div>
-                        </div>
-                    </div>
-                `;
-        })
-        .join("");
-    } catch (error) {
-      console.error("Message search error:", error);
-      resultsContainer.innerHTML =
-        '<div style="padding:20px;text-align:center;color:#ff7979;">Search failed</div>';
-    }
-  }, 300);
-}
-
-// Start a new conversation
-function startConversation(userId, username, displayName, avatarUrl) {
-  document.getElementById("messageSearchInput").value = "";
-  document.getElementById("messageSearchResults").style.display = "none";
-  document.getElementById("messageSearchResults").innerHTML = "";
-  document.getElementById("conversationsList").style.display = "block";
-
-  const conversationId = [currentUser.id, userId].sort().join("_");
-  openConversation(userId, username, displayName, avatarUrl, conversationId);
-}
-
-// Open a conversation
-async function openConversation(
-  userId,
-  username,
-  displayName,
-  avatarUrl,
-  conversationId
-) {
-  currentConversation = conversationId;
-
-  document.getElementById("conversationsList").style.display = "none";
-  document.getElementById("messageSearchResults").style.display = "none";
-  document.getElementById("chatWindow").style.display = "flex";
-  document.getElementById("globalChatInput").style.display = "flex";
-
-  document.getElementById("chatUserName").innerText = displayName;
-  document.getElementById("chatUsername").innerText = "@" + username;
-
-  const avatarEl = document.getElementById("chatUserAvatar");
-  if (avatarUrl) {
-    avatarEl.innerHTML = `<img src="${avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`;
-  } else {
-    avatarEl.innerHTML = "💤";
-  }
-
-  window.currentRecipient = { id: userId, username, displayName };
-
-  await loadMessages(userId);
-
-  // 🔥 MARK MESSAGES AS READ
-  if (socket) {
-    socket.emit("mark_read", {
-      conversationId: conversationId,
-      senderId: userId,
-    });
-  }
-
-  // 🔥 REFRESH CONVERSATION LIST TO UPDATE UNREAD COUNTS
-  setTimeout(() => {
-    loadConversations();
-    updateSidebarMessagesBadge();
-  }, 500);
-}
-
-// Fix updateSidebarMessagesBadge to use messages endpoint
-async function updateSidebarMessagesBadge() {
-  try {
-    let token = sessionStorage.getItem('token');
-    if (!token) {
-      console.log('No token found - skipping badge update');
-      return;
-    }
-    
-    token = token.replace(/^"(.*)"$/, '$1').trim();
-    
-    console.log('📊 Fetching notification and message counts...');
-    
-    // Get notification count (bell icon)
-    const notifRes = await fetch('/api/notifications/unread/count', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // 🔥 Get MESSAGES count (not notifications)
-    const msgRes = await fetch('/api/messages/unread/count', {
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (notifRes.ok) {
-      const notifData = await notifRes.json();
-      console.log('✅ Notification count:', notifData.count);
-      
-      const notificationBadge = document.getElementById('notificationBadge');
-      if (notifData.count > 0 && notificationBadge) {
-        notificationBadge.textContent = notifData.count;
-        notificationBadge.style.display = 'inline-block';
-      } else if (notificationBadge) {
-        notificationBadge.style.display = 'none';
-      }
-    }
-    
-    if (msgRes.ok) {
-      const msgData = await msgRes.json();
-      console.log('✅ Message count:', msgData.count);
-      
-      const messagesBadge = document.getElementById('sidebarMessagesBadge');
-      if (msgData.count > 0 && messagesBadge) {
-        messagesBadge.textContent = msgData.count;
-        messagesBadge.style.display = 'inline-block';
-      } else if (messagesBadge) {
-        messagesBadge.style.display = 'none';
-      }
-    }
-    
-  } catch (e) {
-    console.error('Error updating badges:', e);
-  }
-}
-
-// Load messages for conversation
-async function loadMessages(userId) {
-  try {
-    const chatMessages = document.getElementById("chatMessages");
-    chatMessages.innerHTML =
-      '<div style="padding:20px;text-align:center;color:#8b8d91;">Loading...</div>';
-
-    const messages = await fetchAPI(`/api/messages/conversation/${userId}`);
-
-    if (!messages || messages.length === 0) {
-      chatMessages.innerHTML =
-        '<div style="padding:20px;text-align:center;color:#8b8d91;">No messages yet. Start the conversation!</div>';
-      return;
-    }
-
-    chatMessages.innerHTML = messages
-      .map((msg) => createMessageHTML(msg))
-      .join("");
-
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-  } catch (error) {
-    console.error("Error loading messages:", error);
-    document.getElementById("chatMessages").innerHTML =
-      '<div style="padding:20px;text-align:center;color:#ff7979;">Failed to load messages</div>';
-  }
-}
-
-// Create message HTML
-function createMessageHTML(message) {
-  const isMine = message.isMine;
-  // unread incoming = message from others which is not yet read
-  const isUnreadIncoming = !isMine && message.read === false;
-
-  const bubbleBg = isMine
-    ? "#667eea"                                        // your existing blue for own messages
-    : (isUnreadIncoming ? "#4f78c0ff" : "#0366c9ff");      // darker + special for unread
-
-  const bubbleFontWeight = isUnreadIncoming ? "600" : "400";
-  const bubbleBoxShadow = isUnreadIncoming
-    ? "0 0 0 1px rgba(96, 118, 218, 0.8)"           // subtle highlight ring
-    : "none";
-
-  const time = new Date(message.createdAt).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
-  return `
-    <div class="message ${isMine ? "mine" : "theirs"}"
-         data-message-id="${message.id}"
-         style="display:flex;gap:10px;margin-bottom:12px;${isMine ? "flex-direction:row-reverse;" : ""}">
-      
-      ${
-        !isMine
-          ? `
-        <div style="
-          width:36px;
-          height:36px;
-          border-radius:50%;
-          background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);
-          display:flex;
-          align-items:center;
-          justify-content:center;
-          font-size:16px;
-          overflow:hidden;
-          flex-shrink:0;
-        ">
-          ${
-            message.sender && message.sender.avatarUrl
-              ? `<img src="${message.sender.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
-              : "👤"
-          }
-        </div>`
-          : ""
-      }
-
-      <div style="max-width:70%;">
-        <div
-          style="
-            background:${bubbleBg};
-            color:#fff;
-            padding:10px 14px;
-            border-radius:${isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px"};
-            word-wrap:break-word;
-            font-weight:${bubbleFontWeight};
-            box-shadow:${bubbleBoxShadow};
-          "
-        >
-          ${escapeHtml(message.text || "")}
-        </div>
-
-        <div style="
-          font-size:11px;
-          color:#8b8d91;
-          margin-top:4px;
-          ${isMine ? "text-align:right;" : ""}
-        ">
-          ${time}
-          ${
-            isMine
-              ? (message.read
-                  ? " ✓✓"
-                  : message.delivered
-                    ? " ✓"
-                    : " ○")
-              : ""
-          }
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-
-// Send message
-function sendMessage() {
-  const input = document.getElementById("messageInput");
-  const text = input.value.trim();
-
-  if (!text || !window.currentRecipient || !socket) return;
-
-  // Emit message to server
-  socket.emit("send_message", {
-    recipientId: window.currentRecipient.id,
-    text: text,
-  });
-
-  // Clear input
-  input.value = "";
-
-  // Stop typing indicator
-  socket.emit("typing", {
-    recipientId: window.currentRecipient.id,
-    isTyping: false,
-  });
-
-  // Best-effort: create a server-side notification (if your API supports it)
-  (async () => {
-    try {
-      const payload = {
-        user: window.currentRecipient.id, // recipient (matches Notification.schema 'user')
-        actor: currentUser && currentUser.id ? currentUser.id : null, // sender (matches 'actor')
-        verb: "system", // using 'system' for message notifications (schema verbs: like,comment,follow,mention,reply,system)
-        targetType: "Conversation",
-        targetId: currentConversation || null,
-        read: false,
-      };
-      await fetchAPI("/api/notifications", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-    } catch (e) {
-      // Non-fatal — server may create notifications itself via sockets
-      console.warn("Could not create notification via API:", e);
-    }
-  })();
-}
-// Handle Enter key in message input
-function handleMessageKeyPress(event) {
-  if (event.key === "Enter" && !event.shiftKey) {
-    event.preventDefault();
-    sendMessage();
-  }
-}
-
-// Append message to chat (when sent)
-function appendMessageToChat(message) {
-  const chatMessages = document.getElementById("chatMessages");
-
-  // Remove "no messages" text if exists
-  if (chatMessages.textContent.includes("No messages yet")) {
-    chatMessages.innerHTML = "";
-  }
-
-  const messageHTML = createMessageHTML({
-    id: message.id,
-    sender: message.sender,
-    text: message.text,
-    createdAt: message.createdAt,
-    delivered: message.delivered,
-    read: message.read,
-    isMine: true,
-  });
-
-  chatMessages.insertAdjacentHTML("beforeend", messageHTML);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-// Handle new message received
-function handleNewMessage(message) {
-  // Update conversations list
-  loadConversations();
-
-  // If currently in this conversation, append message
-  if (currentConversation === message.conversationId) {
-    const messageHTML = createMessageHTML({
-      id: message.id,
-      sender: message.sender,
-      text: message.text,
-      createdAt: message.createdAt,
-      isMine: false,
-    });
-
-    const chatMessages = document.getElementById("chatMessages");
-    chatMessages.insertAdjacentHTML("beforeend", messageHTML);
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    // Mark as read
-    if (socket) {
-      socket.emit("mark_read", {
-        conversationId: message.conversationId,
-        senderId: message.sender.id,
-      });
-    }
-  } else {
-    // Show notification (optional)
-    console.log("New message from:", message.sender.displayName);
-  }
-}
-
-// Back to conversations
-function backToConversations() {
-  // Hide chat window
-  document.getElementById("chatWindow").style.display = "none";
-
-  // Show conversation list again
-  document.getElementById("conversationsList").style.display = "block";
-
-  // Keep input visible always
-  document.getElementById("globalChatInput").style.display = "flex";
-
-  document.getElementById("messageSearchInput").value = "";
-
-  currentConversation = null;
-  window.currentRecipient = null;
-
-  loadConversations();
-}
-
-// Update online status indicators
-function updateOnlineStatus() {
-  // Update in conversations list and chat header
-  if (window.currentRecipient && onlineUsers.has(window.currentRecipient.id)) {
-    // Add online indicator to chat header
-    const avatarEl = document.getElementById("chatUserAvatar");
-    if (avatarEl && !avatarEl.querySelector('[style*="background:#00d084"]')) {
-      avatarEl.style.position = "relative";
-      avatarEl.insertAdjacentHTML(
-        "beforeend",
-        '<div style="position:absolute;bottom:0;right:0;width:12px;height:12px;background:#00d084;border:2px solid #242526;border-radius:50%;"></div>'
-      );
-    }
-  }
-}
-
-// Format message time
-function formatMessageTime(timestamp) {
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diff = now - date;
-
-  if (diff < 60000) return "Just now";
-  if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
-  if (diff < 86400000)
-    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  if (diff < 604800000)
-    return date.toLocaleDateString([], { weekday: "short" });
-  return date.toLocaleDateString([], { month: "short", day: "numeric" });
-}
-
-// Update message status
-function updateMessageStatus(messageId, status) {
-  const messageEl = document.querySelector(`[data-message-id="${messageId}"]`);
-  if (messageEl) {
-    const statusEl = messageEl.querySelector('[style*="font-size:11px"]');
-    if (statusEl && status === "delivered") {
-      statusEl.innerHTML = statusEl.innerHTML.replace("○", "✓");
-    }
-  }
-}
-
-// Mark messages as read
-function markMessagesAsRead() {
-  const messages = document.querySelectorAll(
-    '.message.mine [style*="font-size:11px"]'
-  );
-  messages.forEach((el) => {
-    el.innerHTML = el.innerHTML.replace("✓", "✓✓");
-  });
-}
-
-// Show typing indicator
-let typingTimeout;
-function showTypingIndicator(data) {
-  if (
-    !currentConversation ||
-    !window.currentRecipient ||
-    window.currentRecipient.id !== data.userId
-  ) {
-    return;
-  }
-
-  const chatMessages = document.getElementById("chatMessages");
-  const existingIndicator = document.getElementById("typing-indicator");
-
-  if (data.isTyping) {
-    if (!existingIndicator) {
-      chatMessages.insertAdjacentHTML(
-        "beforeend",
-        `
-                <div id="typing-indicator" style="padding:10px;color:#8b8d91;font-size:13px;font-style:italic;">
-                    ${data.username} is typing...
-                </div>
-            `
-      );
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    clearTimeout(typingTimeout);
-    typingTimeout = setTimeout(() => {
-      const indicator = document.getElementById("typing-indicator");
-      if (indicator) indicator.remove();
-    }, 3000);
-  } else {
-    if (existingIndicator) existingIndicator.remove();
-  }
-}
-
-// Handle typing in message input
-let typingIndicatorSent = false;
-document.addEventListener("DOMContentLoaded", () => {
-  const messageInput = document.getElementById("messageInput");
-  if (messageInput) {
-    messageInput.addEventListener("input", () => {
-      if (!socket || !window.currentRecipient) return;
-
-      if (messageInput.value.trim() && !typingIndicatorSent) {
-        socket.emit("typing", {
-          recipientId: window.currentRecipient.id,
-          isTyping: true,
-        });
-        typingIndicatorSent = true;
-      } else if (!messageInput.value.trim() && typingIndicatorSent) {
-        socket.emit("typing", {
-          recipientId: window.currentRecipient.id,
-          isTyping: false,
-        });
-        typingIndicatorSent = false;
-      }
-    });
-  }
-});
-
-// ============== UPDATE INIT FUNCTION ==============
-// Add this to your existing init() function:
-// ----------------- Sidebar messages badge helper -----------------
-async function updateSidebarMessagesBadge() {
-  try {
-    const token = sessionStorage.getItem("token");
-    if (!token) {
-      // no token - hide badge
-      const b = document.getElementById("sidebarMessagesBadge");
-      if (b) b.style.display = "none";
-      return;
-    }
-
-    // Use your notifications unread count endpoint (adjust path if your backend differs)
-    const res = await fetch(`${API_URL}/api/notifications/unread/count`, {
-      method: "GET",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      credentials: "include",
-    });
-
-    if (!res.ok) {
-      // handle 401/404 gracefully
-      console.warn("updateSidebarMessagesBadge: non-ok status", res.status);
-      const b = document.getElementById("sidebarMessagesBadge");
-      if (b) b.style.display = "none";
-      return;
-    }
-
-    const data = await res.json();
-    const badge = document.getElementById("sidebarMessagesBadge");
-    if (!badge) return;
-
-    if (data.count && data.count > 0) {
-      badge.textContent = data.count;
-      badge.style.display = "inline-block";
-    } else {
-      badge.style.display = "none";
-    }
-  } catch (err) {
-    console.warn("updateSidebarMessagesBadge error (ignored):", err);
-    const b = document.getElementById("sidebarMessagesBadge");
-    if (b) b.style.display = "none";
-  }
-}
-
-// ============== UPDATE showMessages FUNCTION ==============
-function showMessages(event) {
-  document
-    .querySelectorAll(".content")
-    .forEach((el) => el.classList.remove("active"));
-  document.getElementById("messages-view").classList.add("active");
-
-  document
-    .querySelectorAll(".toggle-btn")
-    .forEach((el) => el.classList.remove("active"));
-  if (event) event.target.classList.add("active");
-
-  // Always show chat input
-  document.getElementById("globalChatInput").style.display = "flex";
-
-  // Show conversations list
-  document.getElementById("conversationsList").style.display = "block";
-
-  // Hide chat window until user selects a conversation
-  document.getElementById("chatWindow").style.display = "none";
-
-  loadConversations();
-}
 
 function createPostHTML(post) {
   const avatar =
     post.avatar !== "👤"
       ? `<img src="${post.avatar}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">`
       : "👤";
+
+  // Safely embed post content as a JS string literal
+  const shareText = JSON.stringify(post.content || "");
 
   return `
     <div class="post-card" id="post-${post.id}">
@@ -1193,8 +317,14 @@ function createPostHTML(post) {
         <button class="action-btn" onclick="toggleComments('${post.id}')">
           💬 <span id="comments-count-${post.id}">${post.comments || 0}</span>
         </button>
-        <button class="action-btn">🔄</button>
-        <button class="action-btn">📤</button>
+
+        <!-- SHARE BUTTON -->
+        <button
+          class="action-btn"
+          onclick="openShareModal('${post.id}', ${shareText})"
+        >
+          📤
+        </button>
       </div>
 
       <!-- COMMENTS SECTION (Hidden by default) -->
@@ -1203,7 +333,11 @@ function createPostHTML(post) {
         <!-- Add Comment Form -->
         <div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">
           <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
-            ${currentUser && currentUser.avatarUrl ? `<img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">` : "👤"}
+            ${
+              currentUser && currentUser.avatarUrl
+                ? `<img src="${currentUser.avatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
+                : "👤"
+            }
           </div>
           <input 
             type="text" 
@@ -1227,6 +361,8 @@ function createPostHTML(post) {
     </div>
   `;
 }
+
+
 async function toggleComments(postId) {
   const commentsSection = document.getElementById(`comments-${postId}`);
   
@@ -2372,3 +1508,218 @@ document.addEventListener("DOMContentLoaded", () => {
   // If you have a global function that refreshes notifications (checkNotifications),
   // call startNotificationsPolling() after that succeeds to keep things in sync.
 });
+//search models for sharing 
+// For the share flow
+// ============== SHARE MODAL FUNCTIONALITY ==============
+
+let shareSearchTimeout = null;
+let shareTarget = null; // { id, text }
+
+// OPEN SHARE MODAL
+function openShareModal(postId, textToShare) {
+  // ✅ FIX: Properly escape the text for storage
+  shareTarget = {
+    id: postId,
+    text: textToShare
+  };
+
+  const modal = document.getElementById("shareModal");
+  const input = document.getElementById("shareSearchInput");
+  const results = document.getElementById("shareSearchResults");
+
+  if (!modal || !input || !results) {
+    console.error("Share modal elements not found!");
+    return;
+  }
+
+  modal.classList.remove("hidden");
+  // ✅ No need for style.display since CSS handles it
+  input.value = "";
+  results.innerHTML = "";
+  
+  // ✅ Focus input after a small delay to ensure modal is visible
+  setTimeout(() => input.focus(), 100);
+}
+
+// CLOSE SHARE MODAL
+function closeShareModal() {
+  const modal = document.getElementById("shareModal");
+  if (modal) {
+    modal.classList.add("hidden");
+    // ✅ No need for style.display since CSS handles it
+  }
+  shareTarget = null;
+  
+  // ✅ Clear search results
+  const results = document.getElementById("shareSearchResults");
+  if (results) results.innerHTML = "";
+  
+  const input = document.getElementById("shareSearchInput");
+  if (input) input.value = "";
+}
+
+
+// SEARCH USERS FOR SHARING
+async function searchUsersForShare() {
+  const input = document.getElementById("shareSearchInput");
+  const resultsContainer = document.getElementById("shareSearchResults");
+  
+  if (!input || !resultsContainer) return;
+
+  const query = input.value.trim();
+
+  clearTimeout(shareSearchTimeout);
+
+  if (query.length < 2) {
+    resultsContainer.innerHTML = "";
+    return;
+  }
+
+  shareSearchTimeout = setTimeout(async () => {
+    try {
+      resultsContainer.innerHTML =
+        '<div style="padding:20px;text-align:center;color:#8b8d91;">Searching...</div>';
+
+      const users = await fetchAPI(
+        `/api/users/search?q=${encodeURIComponent(query)}`
+      );
+
+      if (!users || users.length === 0) {
+        resultsContainer.innerHTML =
+          '<div style="padding:20px;text-align:center;color:#8b8d91;">No users found</div>';
+        return;
+      }
+
+      // ✅ FIX: Properly escape user data for HTML injection
+      resultsContainer.innerHTML = users
+        .map((user) => {
+          const safeUserId = String(user.id).replace(/'/g, "\\'");
+          const safeUsername = String(user.username || 'unknown').replace(/'/g, "\\'");
+          const safeDisplayName = escapeHtml(user.displayName || user.username || 'Unknown');
+          const safeAvatarUrl = user.avatarUrl ? String(user.avatarUrl).replace(/'/g, "\\'") : '';
+          
+          return `
+            <div class="share-result-item" style="display:flex;align-items:center;gap:12px;padding:12px;border-bottom:1px solid #2f3336;cursor:pointer;transition:0.2s;">
+              <div class="share-result-avatar" style="width:50px;height:50px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;flex-shrink:0;">
+                ${
+                  safeAvatarUrl
+                    ? `<img src="${safeAvatarUrl}" style="width:100%;height:100%;object-fit:cover;">`
+                    : "👤"
+                }
+              </div>
+              <div class="share-result-info" style="flex:1;">
+                <div class="share-result-name" style="font-weight:600;color:#e4e6eb;font-size:14px;">
+                  ${safeDisplayName}
+                </div>
+                <div class="share-result-username" style="color:#8b8d91;font-size:13px;">
+                  @${escapeHtml(user.username || 'unknown')}
+                </div>
+              </div>
+              <button
+                class="share-result-send-btn"
+                onclick="shareMessageToUser('${safeUserId}', '${safeUsername}')"
+                style="padding:8px 16px;background:#667eea;color:white;border:none;border-radius:20px;cursor:pointer;font-weight:600;font-size:13px;transition:0.2s;"
+                onmouseover="this.style.background='#5568d3'"
+                onmouseout="this.style.background='#667eea'"
+              >
+                Send
+              </button>
+            </div>
+          `;
+        })
+        .join("");
+    } catch (error) {
+      console.error("Search error (share):", error);
+      resultsContainer.innerHTML =
+        '<div style="padding:20px;text-align:center;color:#ff7979;">Search failed</div>';
+    }
+  }, 300);
+}
+
+// SHARE MESSAGE/POST TO USER
+// SHARE MESSAGE/POST TO USER
+async function shareMessageToUser(recipientId, username) {
+  if (!shareTarget) {
+    alert("Nothing to share!");
+    return;
+  }
+
+  // ✅ Check if socket is available
+  if (!socket || !socket.connected) {
+    alert("Not connected to chat. Please refresh the page.");
+    return;
+  }
+
+  try {
+    // Text that will appear in chat
+    const textToSend =
+      shareTarget.text && shareTarget.text.length
+        ? `📤 Shared: "${shareTarget.text.substring(0, 100)}${
+            shareTarget.text.length > 100 ? "..." : ""
+          }"`
+        : `📤 Shared a post with you.`;
+
+    // ✅ Show loading state in modal
+    const modal = document.getElementById("shareModal");
+    if (modal) {
+      modal.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#8b8d91;">Sending...</div>';
+    }
+
+    // Send chat message via Socket.IO
+    socket.emit("send_message", {
+      recipientId,
+      text: textToSend,
+      sharedPostId: shareTarget.id, // ✅ uses sharedPostId
+    });
+
+    // ✅ Best-effort notification
+    try {
+      await fetchAPI("/api/notifications", {
+        method: "POST",
+        body: JSON.stringify({
+          user: recipientId,
+          actor: currentUser?.id || currentUser?._id,
+          verb: "system",
+          targetType: "Post",
+          targetId: shareTarget.id,
+          read: false,
+        }),
+      });
+    } catch (notifErr) {
+      console.warn("Could not create notification:", notifErr);
+    }
+
+    // ✅ Success + redirect to messages.html
+    if (modal) {
+      modal.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:center;height:200px;color:#00d084;font-weight:600;">✓ Shared! Opening messages...</div>';
+    }
+
+    setTimeout(() => {
+      closeShareModal();
+      // You can pass context if you later want auto-open
+      // e.g. ?to=username&sharedPostId=...
+      window.location.href = `/messages.html?to=${encodeURIComponent(
+        username
+      )}`;
+    }, 800);
+
+    console.log(`✅ Shared post ${shareTarget.id} to @${username}`);
+  } catch (error) {
+    console.error("❌ Error sharing:", error);
+    alert(`Failed to share: ${error.message || "Unknown error"}`);
+    closeShareModal();
+  }
+}
+
+
+// ✅ Make functions globally available
+window.openShareModal = openShareModal;
+window.closeShareModal = closeShareModal;
+window.searchUsersForShare = searchUsersForShare;
+window.shareMessageToUser = shareMessageToUser;
+
+console.log('✅ Share modal functionality loaded');
+
+///
