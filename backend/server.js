@@ -94,7 +94,7 @@ const server = http.createServer(app); // ✅ ADD THIS
 //     methods: ["GET", "POST"],
 //   },
 // });
-app.set("io", io); // after io created
+// app.set("io", io); // after io created
 
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
