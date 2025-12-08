@@ -5,6 +5,23 @@
 // const API_URL = `http://${window.location.hostname}:3000`;4
 const API_BASE = "https://socialsync-ow8q.onrender.com";
 const socket = io("https://socialsync-ow8q.onrender.com");
+function initSocket() {
+  console.log("⚡ Initializing Socket.IO connection...");
+
+  socket.on("connect", () => {
+    console.log("🔗 Socket connected:", socket.id);
+  });
+
+  socket.on("disconnect", () => {
+    console.warn("❌ Socket disconnected");
+  });
+
+  // Example message listener
+  socket.on("receive_message", (msg) => {
+    console.log("📨 New message:", msg);
+    showDesktopNotification(msg);
+  });
+}
 
 const API_URL = API_BASE;
 const token = sessionStorage.getItem("token");
@@ -150,15 +167,31 @@ function escapeHtml(str) {
 }
 
 // Generic fetch-with-token (used by sidebar polling)
+// async function fetchWithToken(path, opts = {}) {
+//   const token = sessionStorage.getItem("token");
+//   const headers = Object.assign(
+//     { "Content-Type": "application/json" },
+//     opts.headers || {}
+//   );
+//   if (token) headers["Authorization"] = `Bearer ${token}`;
+
+//   return fetch(path, {
+//     credentials: "include",
+//     ...opts,
+//     headers,
+//   });
+// }
 async function fetchWithToken(path, opts = {}) {
   const token = sessionStorage.getItem("token");
-  const headers = Object.assign(
-    { "Content-Type": "application/json" },
-    opts.headers || {}
-  );
+
+  const headers = {
+    "Content-Type": "application/json",
+    ...(opts.headers || {}),
+  };
+
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return fetch(path, {
+  return fetch(`${API_URL}${path}`, {
     credentials: "include",
     ...opts,
     headers,
