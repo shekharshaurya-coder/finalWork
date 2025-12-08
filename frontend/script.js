@@ -2,7 +2,7 @@
 //  CONFIG & GLOBAL STATE
 // =====================================================
 
-const API_URL = `http://${window.location.hostname}:3000`;
+const API_URL = `https://${window.location.hostname}`;
 const token = sessionStorage.getItem("token");
 
 // Redirect to login if no token (kept as-is)
@@ -401,8 +401,12 @@ function createPostHTML(post) {
           : ""
       }
       <div class="post-actions">
-        <button class="action-btn ${post.liked ? "liked" : ""}" onclick="toggleLike('${post.id}')">
-          ${post.liked ? "❤️" : "🤍"} <span id="likes-${post.id}">${post.likes}</span>
+        <button class="action-btn ${
+          post.liked ? "liked" : ""
+        }" onclick="toggleLike('${post.id}')">
+          ${post.liked ? "❤️" : "🤍"} <span id="likes-${post.id}">${
+    post.likes
+  }</span>
         </button>
         <button class="action-btn" onclick="toggleComments('${post.id}')">
           💬 <span id="comments-count-${post.id}">${post.comments || 0}</span>
@@ -415,7 +419,9 @@ function createPostHTML(post) {
         </button>
       </div>
 
-      <div class="comments-section" id="comments-${post.id}" style="display:none;margin-top:15px;border-top:1px solid #2f3336;padding-top:15px;">
+      <div class="comments-section" id="comments-${
+        post.id
+      }" style="display:none;margin-top:15px;border-top:1px solid #2f3336;padding-top:15px;">
         <div style="display:flex;gap:10px;margin-bottom:15px;align-items:center;">
           <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden;flex-shrink:0;">
             ${
@@ -438,7 +444,9 @@ function createPostHTML(post) {
           </button>
         </div>
 
-        <div id="comments-list-${post.id}" style="display:flex;flex-direction:column;gap:12px;">
+        <div id="comments-list-${
+          post.id
+        }" style="display:flex;flex-direction:column;gap:12px;">
         </div>
       </div>
     </div>
@@ -597,9 +605,7 @@ async function addComment(postId) {
       const currentCount = parseInt(countElement.textContent) || 0;
       countElement.textContent = currentCount + 1;
       console.log(
-        `📊 Updated comment count from ${currentCount} to ${
-          currentCount + 1
-        }`
+        `📊 Updated comment count from ${currentCount} to ${currentCount + 1}`
       );
     }
 
@@ -638,9 +644,7 @@ async function deleteComment(commentId, postId) {
       const currentCount = parseInt(countElement.textContent) || 0;
       const newCount = Math.max(0, currentCount - 1);
       countElement.textContent = newCount;
-      console.log(
-        `📊 Updated count from ${currentCount} to ${newCount}`
-      );
+      console.log(`📊 Updated count from ${currentCount} to ${newCount}`);
     }
 
     if (commentElement) {
@@ -651,9 +655,7 @@ async function deleteComment(commentId, postId) {
       setTimeout(() => {
         commentElement.remove();
 
-        const commentsList = document.getElementById(
-          `comments-list-${postId}`
-        );
+        const commentsList = document.getElementById(`comments-list-${postId}`);
         if (commentsList && commentsList.children.length === 0) {
           commentsList.innerHTML =
             '<div style="text-align:center;color:#8b8d91;padding:10px;">No comments yet. Be the first to comment!</div>';
@@ -935,9 +937,7 @@ async function searchUsers() {
               <div style="font-weight:600;font-size:14px;color:#e4e6eb;">${
                 user.displayName || user.username
               }</div>
-              <div style="font-size:13px;color:#8b8d91;">@${
-                user.username
-              }</div>
+              <div style="font-size:13px;color:#8b8d91;">@${user.username}</div>
               <div style="font-size:12px;color:#666;">${
                 user.followersCount || 0
               } followers</div>
