@@ -1321,7 +1321,7 @@ app.get("/api/posts/feed", auth, async (req, res) => {
     };
 
     // Cache for 1 minute
-    await redisHelpers.setJSON(cacheKey, response, { ex: 60 });
+    await redisHelpers.setJSON(cacheKey, response, { ex: 300 });
 
     res.json(response);
   } catch (err) {
