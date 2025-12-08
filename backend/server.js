@@ -53,17 +53,6 @@ app.use("/api/trending", trendingRouter);
 // if using socket.io, attach io to app so routes can emit
 
 //writen by shekhar
-app.set("trust proxy", 1);
-const io = new Server(server, {
-  cors: {
-    origin: [
-      "https://socialsync-ow8q.onrender.com",
-      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
-    ],
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
 
 async function logplease(req, event, desc, md) {
   await logger.logFromRequest(req, {
@@ -112,6 +101,7 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 // Enable CORS for development
+
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
@@ -132,6 +122,18 @@ app.use("/api/conversations", auth, messagesRouter); // ensure auth is used here
 // ==============================
 // GET followers (users who follow :id) with followerCount
 app.use("/demo", logDemoRoutes);
+app.set("trust proxy", 1);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "https://socialsync-ow8q.onrender.com",
+      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
 app.get("/api/users/:id/followers", async (req, res) => {
   try {
     const userId = req.params.id;
