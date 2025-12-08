@@ -4,7 +4,11 @@
 
 // const API_URL = `http://${window.location.hostname}:3000`;4
 const API_BASE = "https://socialsync-ow8q.onrender.com";
-const socket = io("https://socialsync-ow8q.onrender.com");
+const socket = io(API_BASE, {
+  transports: ["websocket", "polling"],
+  upgrade: false,
+});
+
 function initSocket() {
   console.log("⚡ Initializing Socket.IO connection...");
 

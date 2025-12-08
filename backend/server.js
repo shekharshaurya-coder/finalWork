@@ -26,19 +26,18 @@ const { Types } = require("mongoose");
 const notificationsRouter = require("./routes/notifications"); // path you chose
 const messagesRouter = require("./routes/messages");
 const trendingRouter = require("./routes/trending");
-const logDemoRoutes = require('./routes/logDemo');
-
+const logDemoRoutes = require("./routes/logDemo");
 
 // ============== BULLMQ QUEUES ==============
 const mediaQueue = require("./queues/media.queue");
 
 // ============== ADMIN ==============
-const logger = require('./services/logger');
-const adminAuth = require('./middleware/adminAuth');
+const logger = require("./services/logger");
+const adminAuth = require("./middleware/adminAuth");
 
 // ============== ELASTIC-SEARCH ==============
-const { Client } = require('@elastic/elasticsearch');
-const esClient = new Client({ node: 'http://localhost:9200' });
+const { Client } = require("@elastic/elasticsearch");
+const esClient = new Client({ node: "http://localhost:9200" });
 
 // ============== INITIALIZE APP ==============
 const app = express();
@@ -51,18 +50,15 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use("/api/notifications", notificationsRouter);
 app.use("/api/trending", trendingRouter);
 
-
 // if using socket.io, attach io to app so routes can emit
 
-//writen by shekhar 
-async function logplease(req,event,desc ,md){
+//writen by shekhar
+async function logplease(req, event, desc, md) {
   await logger.logFromRequest(req, {
-  eventType: event,
-  description: desc,
-  metadata:  md ,
-});
-
-
+    eventType: event,
+    description: desc,
+    metadata: md,
+  });
 }
 
 // Enable CORS for development
@@ -92,12 +88,12 @@ connectDB();
 const server = http.createServer(app); // ✅ ADD THIS
 
 // ✅ ADD SOCKET.IO SETUP
-const io = new Server(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"],
-  },
-});
+// const io = new Server(server, {
+//   cors: {
+//     origin: "*",
+//     methods: ["GET", "POST"],
+//   },
+// });
 app.set("io", io); // after io created
 
 app.use(express.json({ limit: "50mb" }));
@@ -117,14 +113,13 @@ app.use((req, res, next) => {
 app.use("/api", messagesRouter);
 app.use("/api/conversations", auth, messagesRouter); // ensure auth is used here
 
-
 //following list end points
 
 // ==============================
 // GET FOLLOWERS OF A USER
 // ==============================
 // GET followers (users who follow :id) with followerCount
-app.use('/demo', logDemoRoutes);
+app.use("/demo", logDemoRoutes);
 app.get("/api/users/:id/followers", async (req, res) => {
   try {
     const userId = req.params.id;
@@ -303,126 +298,134 @@ io.on("connection", (socket) => {
 
   // Handle new message
   // Handle new message
-socket.on("send_message", async (data) => {
-  try {
-    const Message = require("./models/Message");
-    // ❌ const Notification = require("./models/Notification");  // REMOVE THIS LINE
+  socket.on("send_message", async (data) => {
+    try {
+      const Message = require("./models/Message");
+      // ❌ const Notification = require("./models/Notification");  // REMOVE THIS LINE
 
-    console.log(
-      "📤 Sending message from:",
-      socket.username,
-      "to:",
-      data.recipientId
-    );
+      console.log(
+        "📤 Sending message from:",
+        socket.username,
+        "to:",
+        data.recipientId
+      );
 
-    // Create conversation ID (sorted user IDs)
-    const conversationId = [socket.userId, data.recipientId].sort().join("_");
+      // Create conversation ID (sorted user IDs)
+      const conversationId = [socket.userId, data.recipientId].sort().join("_");
 
-    // Save message to database
-    const newMessage = await Message.create({
-      conversationId: conversationId,
-      sender: socket.userId,
-      recipients: [data.recipientId],
-      text: data.text,
-      deliveredTo: [],
-      readBy: [],
-    });
-
-    console.log("✅ Message saved to database:", newMessage._id);
-
-    // Populate sender info
-   logplease(req,'MESSAGE_SENT', 'User sent a message', { recipientId: data.recipientId, messageId: newMessage._id });
-    const populatedMessage = await Message.findById(newMessage._id)
-      .populate("sender", "username displayName avatarUrl")
-      .lean();
-
-    const messageData = {
-      id: populatedMessage._id,
-      conversationId: conversationId,
-      sender: {
-        id: populatedMessage.sender._id,
-        username: populatedMessage.sender.username,
-        displayName:
-          populatedMessage.sender.displayName ||
-          populatedMessage.sender.username,
-        avatarUrl: populatedMessage.sender.avatarUrl,
-      },
-      text: populatedMessage.text,
-      createdAt: populatedMessage.createdAt,
-      delivered: false,
-      read: false,
-    };
-
-    // ✅ NO MORE Notification.create() HERE
-    // (messages will still be delivered via 'new_message' event)
-
-    // Send to sender (confirmation)
-    socket.emit("message_sent", messageData);
-
-    // Send to recipient if online
-    const recipientSocketId = connectedUsers.get(data.recipientId);
-    if (recipientSocketId) {
-      io.to(recipientSocketId).emit("new_message", messageData);
-
-      // Mark as delivered
-      await Message.findByIdAndUpdate(newMessage._id, {
-        $addToSet: { deliveredTo: data.recipientId },
+      // Save message to database
+      const newMessage = await Message.create({
+        conversationId: conversationId,
+        sender: socket.userId,
+        recipients: [data.recipientId],
+        text: data.text,
+        deliveredTo: [],
+        readBy: [],
       });
 
-      socket.emit("message_delivered", { messageId: newMessage._id });
-     logplease(req,'MESSAGE_DELIVERED', 'Message delivered to recipient', { recipientId: data.recipientId, messageId: newMessage._id });
+      console.log("✅ Message saved to database:", newMessage._id);
 
-      console.log("✅ Message delivered to online recipient");
-    } else {
-      console.log("📪 Recipient offline (message stored, no socket yet)");
+      // Populate sender info
+      logplease(req, "MESSAGE_SENT", "User sent a message", {
+        recipientId: data.recipientId,
+        messageId: newMessage._id,
+      });
+      const populatedMessage = await Message.findById(newMessage._id)
+        .populate("sender", "username displayName avatarUrl")
+        .lean();
+
+      const messageData = {
+        id: populatedMessage._id,
+        conversationId: conversationId,
+        sender: {
+          id: populatedMessage.sender._id,
+          username: populatedMessage.sender.username,
+          displayName:
+            populatedMessage.sender.displayName ||
+            populatedMessage.sender.username,
+          avatarUrl: populatedMessage.sender.avatarUrl,
+        },
+        text: populatedMessage.text,
+        createdAt: populatedMessage.createdAt,
+        delivered: false,
+        read: false,
+      };
+
+      // ✅ NO MORE Notification.create() HERE
+      // (messages will still be delivered via 'new_message' event)
+
+      // Send to sender (confirmation)
+      socket.emit("message_sent", messageData);
+
+      // Send to recipient if online
+      const recipientSocketId = connectedUsers.get(data.recipientId);
+      if (recipientSocketId) {
+        io.to(recipientSocketId).emit("new_message", messageData);
+
+        // Mark as delivered
+        await Message.findByIdAndUpdate(newMessage._id, {
+          $addToSet: { deliveredTo: data.recipientId },
+        });
+
+        socket.emit("message_delivered", { messageId: newMessage._id });
+        logplease(req, "MESSAGE_DELIVERED", "Message delivered to recipient", {
+          recipientId: data.recipientId,
+          messageId: newMessage._id,
+        });
+
+        console.log("✅ Message delivered to online recipient");
+      } else {
+        console.log("📪 Recipient offline (message stored, no socket yet)");
+      }
+
+      console.log(
+        "📩 Message send complete:",
+        socket.username,
+        "→",
+        data.recipientId
+      );
+    } catch (error) {
+      console.error("❌ Error sending message:", error);
+      socket.emit("message_error", { error: "Failed to send message" });
     }
-
-    console.log(
-      "📩 Message send complete:",
-      socket.username,
-      "→",
-      data.recipientId
-    );
-  } catch (error) {
-    console.error("❌ Error sending message:", error);
-    socket.emit("message_error", { error: "Failed to send message" });
-  }
-});
-
+  });
 
   // Handle message read
-socket.on("mark_read", async (data) => {
-  try {
-    const Message = require("./models/Message");
+  socket.on("mark_read", async (data) => {
+    try {
+      const Message = require("./models/Message");
 
-    const result = await Message.updateMany(
-      {
-        conversationId: data.conversationId,
-        sender: data.senderId,
-        readBy: { $ne: socket.userId },
-      },
-      {
-        $addToSet: { readBy: socket.userId },
+      const result = await Message.updateMany(
+        {
+          conversationId: data.conversationId,
+          sender: data.senderId,
+          readBy: { $ne: socket.userId },
+        },
+        {
+          $addToSet: { readBy: socket.userId },
+        }
+      );
+
+      console.log(`✅ Marked ${result.modifiedCount} messages as read`);
+      if (result.modifiedCount > 0) {
+        logplease("MESSAGE_READ", "User read messages in a conversation", {
+          conversationId: data.conversationId,
+          senderId: data.senderId,
+        });
       }
-    );
 
-    console.log(`✅ Marked ${result.modifiedCount} messages as read`);
-       if (result.modifiedCount > 0) {
-      logplease('MESSAGE_READ', 'User read messages in a conversation', { conversationId: data.conversationId, senderId: data.senderId });
+      // Notify sender that messages were read
+      const senderSocketId = connectedUsers.get(data.senderId);
+      if (senderSocketId) {
+        io.to(senderSocketId).emit("messages_read", {
+          conversationId: data.conversationId,
+          readBy: socket.userId,
+        });
+      }
+    } catch (error) {
+      console.error("Error marking messages as read:", error);
     }
-
-    // Notify sender that messages were read
-    const senderSocketId = connectedUsers.get(data.senderId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messages_read", {
-        conversationId: data.conversationId,
-        readBy: socket.userId,
-      });
-    }
-  } catch (error) {
-    console.error("Error marking messages as read:", error);
-  }
-});
+  });
 
   // Handle disconnect
   socket.on("disconnect", () => {
@@ -561,7 +564,7 @@ app.get("/api/messages/unread/count", auth, async (req, res) => {
 app.post("/api/auth/signup", async (req, res) => {
   try {
     const { email, username, age, gender, password } = req.body;
-    
+
     // Check all fields are provided
     if (!email || !username || !age || !gender || !password) {
       return res.status(400).json({ message: "All fields are required" });
@@ -569,20 +572,24 @@ app.post("/api/auth/signup", async (req, res) => {
 
     // Validate username starts with a letter
     if (!/^[a-zA-Z]/.test(username)) {
-      return res.status(400).json({ message: "Username must start with a letter" });
+      return res
+        .status(400)
+        .json({ message: "Username must start with a letter" });
     }
 
     // Validate username format (letter, then letters/numbers/underscores)
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
-      return res.status(400).json({ 
-        message: "Username can only contain letters, numbers and underscores" 
+      return res.status(400).json({
+        message: "Username can only contain letters, numbers and underscores",
       });
     }
 
     // Validate age
     const ageNum = parseInt(age);
     if (isNaN(ageNum) || ageNum < 16) {
-      return res.status(400).json({ message: "You must be at least 16 years old to sign up" });
+      return res
+        .status(400)
+        .json({ message: "You must be at least 16 years old to sign up" });
     }
 
     if (ageNum > 120) {
@@ -590,19 +597,23 @@ app.post("/api/auth/signup", async (req, res) => {
     }
 
     // Validate gender
-    const validGenders = ['male', 'female', 'other', 'prefer-not-to-say'];
+    const validGenders = ["male", "female", "other", "prefer-not-to-say"];
     if (!validGenders.includes(gender)) {
       return res.status(400).json({ message: "Invalid gender selection" });
     }
 
     // Validate password - no special characters
     if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
-      return res.status(400).json({ message: "Password cannot contain special characters" });
+      return res
+        .status(400)
+        .json({ message: "Password cannot contain special characters" });
     }
 
     // Check password length
     if (password.length < 6) {
-      return res.status(400).json({ message: "Password must be at least 6 characters" });
+      return res
+        .status(400)
+        .json({ message: "Password must be at least 6 characters" });
     }
 
     // Check if email already exists
@@ -631,9 +642,10 @@ app.post("/api/auth/signup", async (req, res) => {
       followersCount: 0,
       followingCount: 0,
     });
-    logplease(req,'SIGNUP', 'New user signed up', { userId: newUser._id, username: newUser.username });
-
-   
+    logplease(req, "SIGNUP", "New user signed up", {
+      userId: newUser._id,
+      username: newUser.username,
+    });
 
     // Ensure JWT secret exists
     if (!process.env.JWT_SECRET) {
@@ -704,12 +716,18 @@ app.post("/api/auth/login", async (req, res) => {
       expiresIn: "7d",
     });
 
-    const device = req.headers['user-agent'];
+    const device = req.headers["user-agent"];
     const ip = req.ip || req.connection.remoteAddress;
-    logplease(req,'LOGIN', 'User logged in', { userId: user._id, username: user.username, device, ip });
+    logplease(req, "LOGIN", "User logged in", {
+      userId: user._id,
+      username: user.username,
+      device,
+      ip,
+    });
 
     // ✅ CHECK IF ADMIN
-    const adminUsernames = process.env.ADMIN_USERNAMES?.split(',').map(u => u.trim()) || [];
+    const adminUsernames =
+      process.env.ADMIN_USERNAMES?.split(",").map((u) => u.trim()) || [];
     const isAdmin = adminUsernames.includes(username);
     console.log("🔐 Admin check:", { username, adminUsernames, isAdmin });
 
@@ -783,9 +801,9 @@ app.get("/api/users/search", auth, async (req, res) => {
       return res.json([]);
     }
 
-    const cacheKey = cacheHelper.keys.search(q);  // ✅ add this line
+    const cacheKey = cacheHelper.keys.search(q); // ✅ add this line
 
-    await logplease(req, 'USER_SEARCH', 'User performed a search', {
+    await logplease(req, "USER_SEARCH", "User performed a search", {
       query: q,
       userId: req.user._id,
     });
@@ -822,7 +840,6 @@ app.get("/api/users/search", auth, async (req, res) => {
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 // FOLLOW USER - FIXED
 // REPLACE THE FOLLOW ROUTES IN YOUR server.js WITH THESE FIXED VERSIONS
@@ -868,10 +885,13 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
       });
 
       // ✅ LOG USER FOLLOWS
-      logplease(req,'USER_FOLLOWS', 'User followed another user', { by: me, target: targetUserId });
+      logplease(req, "USER_FOLLOWS", "User followed another user", {
+        by: me,
+        target: targetUserId,
+      });
 
       // ✅ LOG SOMEONE FOLLOWS YOU (for target user)
-     
+
       // Invalidate follow-related caches
       await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
@@ -944,7 +964,10 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
     });
 
     // ✅ LOG UNFOLLOW (using USER_FOLLOWS event with metadata)
-     logplease(req,'USER_UNFOLLOWS', 'User unfollowed another user', { by: me, target: targetUserId });
+    logplease(req, "USER_UNFOLLOWS", "User unfollowed another user", {
+      by: me,
+      target: targetUserId,
+    });
 
     // Invalidate follow-related caches
     await cacheHelper.invalidateFollowCaches(me, targetUserId);
@@ -1004,9 +1027,16 @@ app.put("/api/users/me", auth, async (req, res) => {
     }).select("-passwordHash");
 
     if (!updated) return res.status(404).json({ message: "User not found" });
-   logplease(req,'PROFILE_UPDATED', 'User updated their profile', { userId: req.user._id, username: req.user.username, updates });
-     if (updates.avatarUrl) {
-      logplease(req,'AVATAR_UPDATED', 'User updated their avatar', { userId: req.user._id, username: req.user.username });
+    logplease(req, "PROFILE_UPDATED", "User updated their profile", {
+      userId: req.user._id,
+      username: req.user.username,
+      updates,
+    });
+    if (updates.avatarUrl) {
+      logplease(req, "AVATAR_UPDATED", "User updated their avatar", {
+        userId: req.user._id,
+        username: req.user.username,
+      });
     }
 
     res.json({
@@ -1034,7 +1064,7 @@ app.get("/api/media/all", auth, async (req, res) => {
     const Media = require("./models/Media");
 
     console.log("📥 Fetching media for user:", req.user._id);
-    
+
     const mediaList = await Media.find({ ownerId: req.user._id })
       .sort({ createdAt: -1 })
       .lean();
@@ -1065,7 +1095,11 @@ app.post("/api/media/upload", auth, async (req, res) => {
       mimeType: mimeType || "application/octet-stream",
       processed: true,
     });
-   logplease(req,'MEDIA_UPLOADED', 'User uploaded new media', { userId: req.user._id, username: req.user.username, mediaId: newMedia._id });
+    logplease(req, "MEDIA_UPLOADED", "User uploaded new media", {
+      userId: req.user._id,
+      username: req.user.username,
+      mediaId: newMedia._id,
+    });
 
     console.log("✅ Media uploaded:", newMedia._id);
     res.status(201).json(newMedia);
@@ -1087,9 +1121,15 @@ app.delete("/api/media/:mediaId", auth, async (req, res) => {
 
     // Check if user owns this media
     if (media.ownerId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized to delete this media" });
+      return res
+        .status(403)
+        .json({ message: "Not authorized to delete this media" });
     }
- logplease('MEDIA_DELETED', 'User deleted media', { userId: req.user._id, username: req.user.username, mediaId: req.params.mediaId });
+    logplease("MEDIA_DELETED", "User deleted media", {
+      userId: req.user._id,
+      username: req.user.username,
+      mediaId: req.params.mediaId,
+    });
     await Media.findByIdAndDelete(req.params.mediaId);
 
     console.log("✅ Media deleted:", req.params.mediaId);
@@ -1105,9 +1145,12 @@ app.delete("/api/media/:mediaId", auth, async (req, res) => {
 // CREATE POST
 app.post("/api/posts", auth, async (req, res) => {
   try {
-    console.log('🔧 POST /api/posts route HIT by user:', req.user.username);
+    console.log("🔧 POST /api/posts route HIT by user:", req.user.username);
     const { content, type, mediaUrl } = req.body;
-    console.log('  Content:', content ? content.substring(0, 20) + '...' : 'EMPTY');
+    console.log(
+      "  Content:",
+      content ? content.substring(0, 20) + "..." : "EMPTY"
+    );
 
     if (!content || content.trim() === "") {
       return res.status(400).json({ message: "Content is required" });
@@ -1115,7 +1158,7 @@ app.post("/api/posts", auth, async (req, res) => {
 
     const user = await User.findById(req.user._id);
 
-    console.log('  Creating post in MongoDB...');
+    console.log("  Creating post in MongoDB...");
     const newPost = await Post.create({
       userId: req.user._id,
       username: req.user.username,
@@ -1126,9 +1169,20 @@ app.post("/api/posts", auth, async (req, res) => {
       comments: [],
     });
 
-    console.log('📝 POST_CREATED: About to log post creation for user:', req.user.username);
-    logplease(req,'POST_CREATED', 'User created a new post', { postId: newPost._id, userId: req.user._id, username: req.user.username, hasMedia: !!mediaUrl });
-    console.log('📝 POST_CREATED: Logger call completed for post:', newPost._id.toString());
+    console.log(
+      "📝 POST_CREATED: About to log post creation for user:",
+      req.user.username
+    );
+    logplease(req, "POST_CREATED", "User created a new post", {
+      postId: newPost._id,
+      userId: req.user._id,
+      username: req.user.username,
+      hasMedia: !!mediaUrl,
+    });
+    console.log(
+      "📝 POST_CREATED: Logger call completed for post:",
+      newPost._id.toString()
+    );
 
     // ✅ QUEUE MEDIA PROCESSING JOB IF MEDIA EXISTS
     if (mediaUrl) {
@@ -1139,7 +1193,16 @@ app.post("/api/posts", auth, async (req, res) => {
           filePath: mediaUrl,
           type: type || "text",
         });
-        logplease(req,'MEDIA_PROCESSING_QUEUED', 'Media processing job queued for post', { postId: newPost._id, userId: req.user._id, username: req.user.username });
+        logplease(
+          req,
+          "MEDIA_PROCESSING_QUEUED",
+          "Media processing job queued for post",
+          {
+            postId: newPost._id,
+            userId: req.user._id,
+            username: req.user.username,
+          }
+        );
         console.log("✅ Media processing job queued for post:", newPost._id);
       } catch (queueErr) {
         console.error("❌ Failed to queue media job:", queueErr);
@@ -1149,13 +1212,17 @@ app.post("/api/posts", auth, async (req, res) => {
 
     // Invalidate feed cache when new post is created
     await cacheHelper.invalidateFeedCache();
-    
+
     // Also invalidate user's own posts cache
     if (redisHelpers && redisHelpers.client()) {
-      const userPostsKeys = await redisHelpers.client().keys(`user:posts:${req.user._id}:*`);
+      const userPostsKeys = await redisHelpers
+        .client()
+        .keys(`user:posts:${req.user._id}:*`);
       if (userPostsKeys && userPostsKeys.length > 0) {
         await redisHelpers.client().del(...userPostsKeys);
-        console.log(`✅ Invalidated ${userPostsKeys.length} user posts cache keys`);
+        console.log(
+          `✅ Invalidated ${userPostsKeys.length} user posts cache keys`
+        );
       }
     }
 
@@ -1206,23 +1273,25 @@ app.get("/api/posts/feed", auth, async (req, res) => {
       .lean();
 
     // Example for GET /api/posts/feed
-const formattedPosts = posts.map((post) => {
-  const postUser = post.userId || {};
-  return {
-    id: post._id,
-    username: postUser.username || post.username,
-    displayName: postUser.displayName || postUser.username,
-    avatar: postUser.avatarUrl || "👤",
-    content: post.content,
-    mediaUrl: post.mediaUrl,
-    timestamp: formatTimestamp(post.createdAt),
-    createdAt: post.createdAt,
-    likes: Array.isArray(post.likes) ? post.likes.length : 0,
-    commentCount: post.commentCount || 0, // ✅ Use commentCount field
-    comments: post.commentCount || 0, // ✅ Also for compatibility
-    liked: Array.isArray(post.likes) && post.likes.some(id => id.toString() === req.user._id.toString()),
-  };
-});
+    const formattedPosts = posts.map((post) => {
+      const postUser = post.userId || {};
+      return {
+        id: post._id,
+        username: postUser.username || post.username,
+        displayName: postUser.displayName || postUser.username,
+        avatar: postUser.avatarUrl || "👤",
+        content: post.content,
+        mediaUrl: post.mediaUrl,
+        timestamp: formatTimestamp(post.createdAt),
+        createdAt: post.createdAt,
+        likes: Array.isArray(post.likes) ? post.likes.length : 0,
+        commentCount: post.commentCount || 0, // ✅ Use commentCount field
+        comments: post.commentCount || 0, // ✅ Also for compatibility
+        liked:
+          Array.isArray(post.likes) &&
+          post.likes.some((id) => id.toString() === req.user._id.toString()),
+      };
+    });
 
     const nextCursor =
       formattedPosts.length === limit
@@ -1230,7 +1299,7 @@ const formattedPosts = posts.map((post) => {
         : null;
 
     const response = {
-      posts: formattedPosts.map(p => {
+      posts: formattedPosts.map((p) => {
         const { createdAt, ...rest } = p; // Omit createdAt from final post object
         return rest;
       }),
@@ -1295,7 +1364,9 @@ app.get("/api/users/:userId/posts", auth, async (req, res) => {
     const posts = await Post.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .select("content mediaUrl likes comments createdAt username displayName avatarUrl")
+      .select(
+        "content mediaUrl likes comments createdAt username displayName avatarUrl"
+      )
       .lean();
 
     console.timeEnd("⏱️ Posts query");
@@ -1326,7 +1397,7 @@ app.get("/api/users/:userId/posts", auth, async (req, res) => {
         : null;
 
     const response = {
-      posts: formattedPosts.map(p => {
+      posts: formattedPosts.map((p) => {
         const { createdAt, ...rest } = p;
         return rest;
       }),
@@ -1368,16 +1439,34 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
     if (likeIndex > -1) {
       // Unlike
       post.likes.splice(likeIndex, 1);
-      logplease(req,'❤️ LIKE_REMOVED', 'User unliked a post', { userId: req.user._id, username: req.user.username, postId: post._id });
-      console.log('❤️ LIKE_REMOVED: About log unlike for user:', req.user.username);
-      
-      console.log(req,'❤️ LIKE_REMOVED: Logger call completed for post:', post._id.toString());
+      logplease(req, "❤️ LIKE_REMOVED", "User unliked a post", {
+        userId: req.user._id,
+        username: req.user.username,
+        postId: post._id,
+      });
+      console.log(
+        "❤️ LIKE_REMOVED: About log unlike for user:",
+        req.user.username
+      );
+
+      console.log(
+        req,
+        "❤️ LIKE_REMOVED: Logger call completed for post:",
+        post._id.toString()
+      );
     } else {
       // Like
       post.likes.push(req.user._id);
 
-      console.log('❤️ LIKE_ADDED: About to log like for user:', req.user.username);
-    logplease(req,'❤️ LIKE_ADDED', 'User liked a post', { userId: req.user._id, username: req.user.username, postId: post._id });
+      console.log(
+        "❤️ LIKE_ADDED: About to log like for user:",
+        req.user.username
+      );
+      logplease(req, "❤️ LIKE_ADDED", "User liked a post", {
+        userId: req.user._id,
+        username: req.user.username,
+        postId: post._id,
+      });
       // Create notification if liking someone else's post
       if (post.userId.toString() !== req.user._id.toString()) {
         const Notification = require("./models/Notification");
@@ -1420,9 +1509,15 @@ app.delete("/api/posts/:postId", auth, async (req, res) => {
 
     // Check if user owns the post
     if (post.userId.toString() !== req.user._id.toString()) {
-      return res.status(403).json({ message: "Not authorized to delete this post" });
+      return res
+        .status(403)
+        .json({ message: "Not authorized to delete this post" });
     }
-    logplease(req,'🗑️ POST_DELETED', 'User deleted a post', { userId: req.user._id, username: req.user.username, postId: post._id })  ;
+    logplease(req, "🗑️ POST_DELETED", "User deleted a post", {
+      userId: req.user._id,
+      username: req.user.username,
+      postId: post._id,
+    });
     // Delete post
     await Post.findByIdAndDelete(req.params.postId);
 
@@ -1430,7 +1525,9 @@ app.delete("/api/posts/:postId", auth, async (req, res) => {
     await cacheHelper.invalidateFeedCache();
 
     // Invalidate user posts cache
-    await redisHelpers.client().del(cacheHelper.keys.userPosts(req.user._id.toString(), "first"));
+    await redisHelpers
+      .client()
+      .del(cacheHelper.keys.userPosts(req.user._id.toString(), "first"));
 
     res.json({ message: "Post deleted successfully" });
   } catch (err) {
@@ -1467,27 +1564,32 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
 
     await comment.save();
 
-    console.log('💬 COMMENT_ADDED: About to log comment for user:', req.user.username);
-    await logplease(req,'💬 COMMENT_ADDED', 'User added a comment', { 
-      userId: req.user._id, 
-      username: req.user.username, 
-      postId: post._id, 
-      commentId: comment._id 
+    console.log(
+      "💬 COMMENT_ADDED: About to log comment for user:",
+      req.user.username
+    );
+    await logplease(req, "💬 COMMENT_ADDED", "User added a comment", {
+      userId: req.user._id,
+      username: req.user.username,
+      postId: post._id,
+      commentId: comment._id,
     });
 
     // ✅ Update post: add comment reference AND increment count
     await Post.updateOne(
       { _id: req.params.postId },
-      { 
+      {
         $push: { comments: comment._id },
-        $inc: { commentCount: 1 }
+        $inc: { commentCount: 1 },
       }
     );
 
     // Invalidate caches
     await cacheHelper.invalidateFeedCache();
     if (redisHelpers && redisHelpers.client()) {
-      await redisHelpers.client().del(cacheHelper.keys.comments(req.params.postId));
+      await redisHelpers
+        .client()
+        .del(cacheHelper.keys.comments(req.params.postId));
     }
 
     // Create notification for post author
@@ -1592,18 +1694,18 @@ app.delete("/api/comments/:commentId", auth, async (req, res) => {
       }
     }
 
-    await logplease(req,'🗑️ COMMENT_DELETED', 'User deleted a comment', { 
-      userId: req.user._id, 
-      username: req.user.username, 
-      commentId: comment._id 
+    await logplease(req, "🗑️ COMMENT_DELETED", "User deleted a comment", {
+      userId: req.user._id,
+      username: req.user.username,
+      commentId: comment._id,
     });
 
     // ✅ Remove comment from post AND decrement count
     await Post.updateOne(
       { _id: comment.post },
-      { 
+      {
         $pull: { comments: comment._id },
-        $inc: { commentCount: -1 }
+        $inc: { commentCount: -1 },
       }
     );
 
@@ -1678,7 +1780,7 @@ app.put("/api/notifications/:notificationId/read", auth, async (req, res) => {
 app.get("/api/notifications/unread/count", auth, async (req, res) => {
   try {
     const Notification = require("./models/Notification");
-    
+
     const count = await Notification.countDocuments({
       user: req.user._id,
       read: false,
@@ -1845,6 +1947,17 @@ function formatTimestamp(date) {
 }
 
 // ============== START SERVER ==============
+app.set("trust proxy", 1);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "https://socialsync-ow8q.onrender.com",
+      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
 
 // ============== REDIS CACHE HELPER ==============
 const cacheHelper = {
@@ -1854,8 +1967,8 @@ const cacheHelper = {
     userProfile: (id) => `user:profile:${id}`,
     followers: (id) => `user:followers:${id}`,
     following: (id) => `user:following:${id}`,
-    feed: (cursor) => `feed:posts:${cursor || 'latest'}`,
-    userPosts: (userId, cursor) => `user:posts:${userId}:${cursor || 'latest'}`,
+    feed: (cursor) => `feed:posts:${cursor || "latest"}`,
+    userPosts: (userId, cursor) => `user:posts:${userId}:${cursor || "latest"}`,
     comments: (postId) => `post:comments:${postId}`,
     unreadNotifications: (userId) => `notif:unread:${userId}`,
     followStatus: (followerId, followeeId) =>
@@ -1932,9 +2045,9 @@ app.get("/api/trending", async (req, res) => {
     const posts = await Post.find().lean();
     let hashtagCounts = {};
 
-    posts.forEach(post => {
+    posts.forEach((post) => {
       const tags = (post.content || "").match(/#\w+/g) || [];
-      tags.forEach(tag => {
+      tags.forEach((tag) => {
         hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
       });
     });
@@ -1942,28 +2055,27 @@ app.get("/api/trending", async (req, res) => {
     if (Object.keys(hashtagCounts).length === 0) {
       return res.json({
         hashtag: null,
-        posts: []
+        posts: [],
       });
     }
 
-    const topTag = Object.entries(hashtagCounts)
-      .sort((a, b) => b[1] - a[1])[0][0];
+    const topTag = Object.entries(hashtagCounts).sort(
+      (a, b) => b[1] - a[1]
+    )[0][0];
 
-    const trendingPosts = posts.filter(p =>
+    const trendingPosts = posts.filter((p) =>
       (p.content || "").includes(topTag)
     );
 
     res.json({
       hashtag: topTag,
-      posts: trendingPosts
+      posts: trendingPosts,
     });
-
   } catch (err) {
     console.error("Trending route error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
-
 
 server.listen(PORT, HOST, () => {
   const ip = require("os").networkInterfaces();
@@ -1988,7 +2100,6 @@ server.listen(PORT, HOST, () => {
 app.get("/api/admin/info", auth, adminAuth, (req, res) => {
   res.json({ username: req.user.username });
 });
-
 
 // Get logs from Elasticsearch
 /*app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
@@ -2059,21 +2170,21 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
 
     try {
       const result = await esClient.search({
-        index: 'socialsync-logs-*',
+        index: "socialsync-logs-*",
         body: {
           query: esQuery,
-          sort: [{ timestamp: { order: 'desc' } }],
-          size: 100
-        }
+          sort: [{ timestamp: { order: "desc" } }],
+          size: 100,
+        },
       });
 
       // FIX: Handle the response structure properly
       let logs = [];
-      
+
       // The response could be result.body.hits.hits OR result.hits.hits
       const hits = result?.body?.hits?.hits || result?.hits?.hits || [];
-      
-      logs = hits.map(hit => hit._source || hit);
+
+      logs = hits.map((hit) => hit._source || hit);
 
       console.log("✅ ES logs found:", logs.length);
       return res.json({ logs });
@@ -2082,23 +2193,26 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
       return res.json({
         logs: [],
         error: "Elasticsearch error",
-        details: esErr.message
+        details: esErr.message,
       });
     }
   } catch (error) {
-    console.error('❌ Logs endpoint error:', error);
-    res.status(500).json({ error: 'Failed to fetch logs' });
+    console.error("❌ Logs endpoint error:", error);
+    res.status(500).json({ error: "Failed to fetch logs" });
   }
 });
 // Add after the other admin endpoints
 app.get("/api/admin/test-log", auth, adminAuth, async (req, res) => {
   try {
     console.log("🧪 Sending test log...");
-   
+
     // Wait a second
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    res.json({ message: 'Test log sent. Check Logstash logs with: docker-compose logs logstash --tail=20' });
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
+    res.json({
+      message:
+        "Test log sent. Check Logstash logs with: docker-compose logs logstash --tail=20",
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -2109,31 +2223,32 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
   try {
     try {
       const result = await esClient.search({
-        index: 'socialsync-logs-*',
+        index: "socialsync-logs-*",
         body: {
           aggs: {
-            by_event: { 
-              terms: { 
-                field: 'eventType.keyword',  // Use .keyword for exact match
-                size: 20 
-              } 
+            by_event: {
+              terms: {
+                field: "eventType.keyword", // Use .keyword for exact match
+                size: 20,
+              },
             },
-            logins: { 
-              filter: { 
-                term: { 'eventType.keyword': 'LOGIN' } 
-              } 
-            }
+            logins: {
+              filter: {
+                term: { "eventType.keyword": "LOGIN" },
+              },
+            },
           },
-          size: 0
-        }
+          size: 0,
+        },
       });
 
       const totalUsers = await User.countDocuments();
       const totalPosts = await Post.countDocuments();
 
       // Handle response structure
-      const aggregations = result?.body?.aggregations || result?.aggregations || {};
-      
+      const aggregations =
+        result?.body?.aggregations || result?.aggregations || {};
+
       return res.json({
         totalLogins: aggregations.logins?.doc_count || 0,
         totalUsers,
@@ -2141,16 +2256,16 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
         postsToday: 0,
         totalEngagement: 0,
         highPriorityEvents: 0,
-        topEvents: (aggregations.by_event?.buckets || []).map(b => ({
+        topEvents: (aggregations.by_event?.buckets || []).map((b) => ({
           eventType: b.key,
-          count: b.doc_count
-        }))
+          count: b.doc_count,
+        })),
       });
     } catch (esErr) {
       console.error("⚠️ ES error in stats:", esErr.message);
       const totalUsers = await User.countDocuments();
       const totalPosts = await Post.countDocuments();
-      
+
       return res.json({
         totalLogins: 0,
         totalUsers,
@@ -2158,12 +2273,12 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
         postsToday: 0,
         totalEngagement: 0,
         highPriorityEvents: 0,
-        topEvents: []
+        topEvents: [],
       });
     }
   } catch (error) {
-    console.error('Stats error:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    console.error("Stats error:", error);
+    res.status(500).json({ error: "Failed to fetch stats" });
   }
 });
 
@@ -2171,34 +2286,38 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
 app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
   try {
     console.log("📊 Fetching all users for admin panel...");
-    
+
     // ✅ FIX: Sort by createdAt descending (newest first) and remove/increase limit
     const users = await User.find()
       .select("username displayName followersCount followingCount createdAt")
       .sort({ createdAt: -1 }) // ✅ Newest users first
       .limit(100) // ✅ Increased from 20 to 100
       .lean();
-    
+
     console.log(`✅ Found ${users.length} users`);
-    
-    const usersWithPosts = await Promise.all(users.map(async (user) => {
-      const postsCount = await Post.countDocuments({ userId: user._id });
-      return {
-        _id: user._id,
-        username: user.username,
-        displayName: user.displayName || user.username,
-        followersCount: user.followersCount || 0,
-        followingCount: user.followingCount || 0,
-        postsCount,
-        createdAt: user.createdAt // Include for debugging
-      };
-    }));
+
+    const usersWithPosts = await Promise.all(
+      users.map(async (user) => {
+        const postsCount = await Post.countDocuments({ userId: user._id });
+        return {
+          _id: user._id,
+          username: user.username,
+          displayName: user.displayName || user.username,
+          followersCount: user.followersCount || 0,
+          followingCount: user.followingCount || 0,
+          postsCount,
+          createdAt: user.createdAt, // Include for debugging
+        };
+      })
+    );
 
     console.log("📤 Sending users to admin panel:", usersWithPosts.length);
     res.json({ users: usersWithPosts });
   } catch (error) {
-    console.error('❌ Admin users endpoint error:', error);
-    res.status(500).json({ error: 'Failed to fetch users', details: error.message });
+    console.error("❌ Admin users endpoint error:", error);
+    res
+      .status(500)
+      .json({ error: "Failed to fetch users", details: error.message });
   }
 });
 
@@ -2223,12 +2342,11 @@ app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
   }
 });*/
 
-
-//logout route 
+//logout route
 // LOGOUT
 app.post("/api/auth/logout", auth, async (req, res) => {
   try {
-    await logplease(req, 'LOGOUT', 'User logged out', {
+    await logplease(req, "LOGOUT", "User logged out", {
       userId: req.user._id,
       username: req.user.username,
     });
