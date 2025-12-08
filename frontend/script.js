@@ -2,7 +2,11 @@
 //  CONFIG & GLOBAL STATE
 // =====================================================
 
-const API_URL = `https://${window.location.hostname}`;
+// const API_URL = `http://${window.location.hostname}:3000`;4
+const API_BASE = "https://socialsync-ow8q.onrender.com";
+const socket = io("https://socialsync-ow8q.onrender.com");
+
+const API_URL = API_BASE;
 const token = sessionStorage.getItem("token");
 
 // Redirect to login if no token (kept as-is)
