@@ -53,6 +53,18 @@ app.use("/api/trending", trendingRouter);
 // if using socket.io, attach io to app so routes can emit
 
 //writen by shekhar
+app.set("trust proxy", 1);
+const io = new Server(server, {
+  cors: {
+    origin: [
+      "https://socialsync-ow8q.onrender.com",
+      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
+    ],
+    methods: ["GET", "POST"],
+    credentials: true,
+  },
+});
+
 async function logplease(req, event, desc, md) {
   await logger.logFromRequest(req, {
     eventType: event,
@@ -1947,17 +1959,6 @@ function formatTimestamp(date) {
 }
 
 // ============== START SERVER ==============
-app.set("trust proxy", 1);
-const io = new Server(server, {
-  cors: {
-    origin: [
-      "https://socialsync-ow8q.onrender.com",
-      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
-    ],
-    methods: ["GET", "POST"],
-    credentials: true,
-  },
-});
 
 // ============== REDIS CACHE HELPER ==============
 const cacheHelper = {
