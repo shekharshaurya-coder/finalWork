@@ -7,7 +7,7 @@ const token = sessionStorage.getItem("token");
 if (!token) {
   window.location.href = "/login.html";
 }
-
+const API_URL = "https://socialsync-ow8q.onrender.com";
 // ==================== API HELPER ====================
 async function fetchAPI(endpoint, options = {}) {
   const defaultOptions = {
@@ -17,14 +17,11 @@ async function fetchAPI(endpoint, options = {}) {
     },
   };
 
-  const response = await fetch(
-    `http://${window.location.hostname}:3000${endpoint}`,
-    {
-      ...defaultOptions,
-      ...options,
-      headers: { ...defaultOptions.headers, ...options.headers },
-    }
-  );
+  const response = await fetch(`${API_URL}/${endpoint}`, {
+    ...defaultOptions,
+    ...options,
+    headers: { ...defaultOptions.headers, ...options.headers },
+  });
 
   if (response.status === 401) {
     // Token expired or invalid
@@ -230,7 +227,7 @@ if (btnPost) {
 
 // ==================== LOGOUT ====================
 const logoutBtn = document.querySelector(".logout-btn");
-  if (logoutBtn) {
+if (logoutBtn) {
   logoutBtn.addEventListener("click", function () {
     sessionStorage.removeItem("token");
     window.location.href = "/login.html";
