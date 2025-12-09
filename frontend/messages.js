@@ -30,44 +30,81 @@ document.addEventListener("DOMContentLoaded", () => {
   loadConversations();
 
   // ✅ Initialize Socket.IO connection
+  // function initSocket() {
+  //   const token = sessionStorage.getItem("token");
+  //   if (!token || socket) return;
+
+  //   // Connect to Socket.IO server
+  //   socket = io("https://socialsync-ow8q.onrender.com", {
+  //     transports: ["websocket", "polling"], // 🔥 FIX FOR RENDER
+  //     upgrade: true, // allow WebSocket upgrade
+  //     path: "/socket.io/", // ensure correct path
+  //     auth: { token },
+  //   });
+
+  //   socket.on("connect", () => {
+  //     console.log("✅ Socket.IO connected to messages page");
+  //   });
+
+  //   socket.on("connect_error", (error) => {
+  //     console.error("❌ Socket.IO connection error:", error);
+  //   });
+
+  //   // ✅ Listen for new messages
+  //   socket.on("new_message", (message) => {
+  //     console.log("📩 New message received:", message);
+
+  //     // Show desktop notification
+  //     showMessageNotification(message);
+
+  //     // Reload conversations to update the list
+  //     loadConversations();
+  //   });
+
+  //   // ✅ Listen for new notification events
+  //   socket.on("new_notification", (data) => {
+  //     console.log("🔔 New notification:", data);
+
+  //     // Show toast notification
+  //     showToastNotification(data);
+  //   });
+
+  //   socket.on("disconnect", () => {
+  //     console.log("❌ Socket.IO disconnected");
+  //   });
+  // }
   function initSocket() {
     const token = sessionStorage.getItem("token");
     if (!token || socket) return;
 
-    // Connect to Socket.IO server
-    socket = io(`https://socialsync-ow8q.onrender.com/`, {
-      auth: { token: token },
+    socket = io("https://socialsync-ow8q.onrender.com", {
+      transports: ["websocket", "polling"], // REQUIRED ON RENDER
+      upgrade: true,
+      path: "/socket.io/",
+      auth: { token },
     });
 
     socket.on("connect", () => {
-      console.log("✅ Socket.IO connected to messages page");
+      console.log("✅ Socket.IO connected");
     });
 
-    socket.on("connect_error", (error) => {
-      console.error("❌ Socket.IO connection error:", error);
-    });
-
-    // ✅ Listen for new messages
-    socket.on("new_message", (message) => {
-      console.log("📩 New message received:", message);
-
-      // Show desktop notification
-      showMessageNotification(message);
-
-      // Reload conversations to update the list
-      loadConversations();
-    });
-
-    // ✅ Listen for new notification events
-    socket.on("new_notification", (data) => {
-      console.log("🔔 New notification:", data);
-
-      // Show toast notification
-      showToastNotification(data);
+    socket.on("connect_error", (err) => {
+      console.error("❌ Socket.IO error:", err.message);
     });
 
     socket.on("disconnect", () => {
-      console.log("❌ Socket.IO disconnected");
+      console.warn("❌ Socket disconnected");
+    });
+
+    socket.on("new_message", (msg) => {
+      console.log("📩 Message:", msg);
+      showMessageNotification(msg);
+      loadConversations();
+    });
+
+    socket.on("new_notification", (nf) => {
+      console.log("🔔 Notification:", nf);
+      showToastNotification(nf);
     });
   }
 
