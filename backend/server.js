@@ -272,6 +272,7 @@ io.use((socket, next) => {
     next(new Error("Authentication error"));
   }
 });
+let socket = null;
 
 // ============== SOCKET.IO CONNECTIONS ==============
 io.on("connection", (socket) => {

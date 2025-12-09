@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const API_BASE = "https://socialsync-ow8q.onrender.com/";
+  const API_BASE = "https://socialsync-ow8q.onrender.com";
   const convListContainer = document.querySelector(".conversations-list");
   const navItems = document.querySelectorAll(".nav-item");
 
@@ -18,7 +18,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ✅ Initialize Socket.IO for real-time updates
   let socket = null;
-  initSocket();
 
   // If no token -> send user to login immediately (prevent 401s)
   if (!sessionStorage.getItem("token")) {
@@ -27,6 +26,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // load conversations
+  initSocket();
   loadConversations();
 
   // ✅ Initialize Socket.IO connection
