@@ -1,16 +1,16 @@
-document.addEventListener('DOMContentLoaded', () => {
-  const API_BASE = '/api';
-  const convListContainer = document.querySelector('.conversations-list');
-  const navItems = document.querySelectorAll('.nav-item');
+document.addEventListener("DOMContentLoaded", () => {
+  const API_BASE = "https://socialsync-ow8q.onrender.com/";
+  const convListContainer = document.querySelector(".conversations-list");
+  const navItems = document.querySelectorAll(".nav-item");
 
   // Elements that might exist on page
-  const feedBtn = document.querySelector('.feed-btn');
-  const newMsgBtn = document.querySelector('.new-message-btn');
-  const logoutBtn = document.querySelector('.logout-btn');
-  const searchBtn = document.querySelector('.search-btn');
+  const feedBtn = document.querySelector(".feed-btn");
+  const newMsgBtn = document.querySelector(".new-message-btn");
+  const logoutBtn = document.querySelector(".logout-btn");
+  const searchBtn = document.querySelector(".search-btn");
 
   if (searchBtn) {
-    searchBtn.addEventListener('click', (e) => {
+    searchBtn.addEventListener("click", (e) => {
       e.preventDefault();
       openSearchOverlay();
     });
@@ -21,8 +21,8 @@ document.addEventListener('DOMContentLoaded', () => {
   initSocket();
 
   // If no token -> send user to login immediately (prevent 401s)
-  if (!sessionStorage.getItem('token')) {
-    window.location.href = 'login.html';
+  if (!sessionStorage.getItem("token")) {
+    window.location.href = "login.html";
     return;
   }
 
@@ -31,60 +31,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ✅ Initialize Socket.IO connection
   function initSocket() {
-    const token = sessionStorage.getItem('token');
+    const token = sessionStorage.getItem("token");
     if (!token || socket) return;
 
     // Connect to Socket.IO server
-    socket = io(`http://${window.location.hostname}:3000`, {
-      auth: { token: token }
+    socket = io(`https://socialsync-ow8q.onrender.com/`, {
+      auth: { token: token },
     });
 
-    socket.on('connect', () => {
-      console.log('✅ Socket.IO connected to messages page');
+    socket.on("connect", () => {
+      console.log("✅ Socket.IO connected to messages page");
     });
 
-    socket.on('connect_error', (error) => {
-      console.error('❌ Socket.IO connection error:', error);
+    socket.on("connect_error", (error) => {
+      console.error("❌ Socket.IO connection error:", error);
     });
 
     // ✅ Listen for new messages
-    socket.on('new_message', (message) => {
-      console.log('📩 New message received:', message);
-      
+    socket.on("new_message", (message) => {
+      console.log("📩 New message received:", message);
+
       // Show desktop notification
       showMessageNotification(message);
-      
+
       // Reload conversations to update the list
       loadConversations();
     });
 
     // ✅ Listen for new notification events
-    socket.on('new_notification', (data) => {
-      console.log('🔔 New notification:', data);
-      
+    socket.on("new_notification", (data) => {
+      console.log("🔔 New notification:", data);
+
       // Show toast notification
       showToastNotification(data);
     });
 
-    socket.on('disconnect', () => {
-      console.log('❌ Socket.IO disconnected');
+    socket.on("disconnect", () => {
+      console.log("❌ Socket.IO disconnected");
     });
   }
 
   // ✅ Show desktop notification for new message
   function showMessageNotification(message) {
     // Request permission if not granted
-    if (Notification.permission === 'default') {
+    if (Notification.permission === "default") {
       Notification.requestPermission();
     }
 
     // Show desktop notification
-    if (Notification.permission === 'granted') {
-      const notification = new Notification(`New message from ${message.sender.displayName}`, {
-        body: message.text.substring(0, 100),
-        icon: message.sender.avatarUrl || '/default-avatar.png',
-        badge: '/badge-icon.png'
-      });
+    if (Notification.permission === "granted") {
+      const notification = new Notification(
+        `New message from ${message.sender.displayName}`,
+        {
+          body: message.text.substring(0, 100),
+          icon: message.sender.avatarUrl || "/default-avatar.png",
+          badge: "/badge-icon.png",
+        }
+      );
 
       notification.onclick = () => {
         window.focus();
@@ -95,7 +98,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ✅ Show in-app toast notification
   function showToastNotification(data) {
-    const toast = document.createElement('div');
+    const toast = document.createElement("div");
     toast.style.cssText = `
       position: fixed;
       bottom: 20px;
@@ -112,10 +115,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     toast.innerHTML = `
       <div style="font-weight: 600; margin-bottom: 4px;">
-        ${data.type === 'message' ? '💬' : '🔔'} ${data.fromDisplayName || data.from}
+        ${data.type === "message" ? "💬" : "🔔"} ${
+      data.fromDisplayName || data.from
+    }
       </div>
       <div style="font-size: 14px; opacity: 0.9;">
-        ${data.message || 'Sent you a message'}
+        ${data.message || "Sent you a message"}
       </div>
     `;
 
@@ -123,18 +128,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auto-remove after 5 seconds
     setTimeout(() => {
-      toast.style.animation = 'slideOut 0.3s ease-out';
+      toast.style.animation = "slideOut 0.3s ease-out";
       setTimeout(() => toast.remove(), 300);
     }, 5000);
 
     // Click to dismiss
-    toast.addEventListener('click', () => {
+    toast.addEventListener("click", () => {
       toast.remove();
     });
   }
 
   // Add animations
-  const style = document.createElement('style');
+  const style = document.createElement("style");
   style.textContent = `
     @keyframes slideIn {
       from {
@@ -161,20 +166,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Nav behavior (fixed)
   if (navItems && navItems.length) {
-    navItems.forEach(item => {
-      item.addEventListener('click', (e) => {
-        if (e.target.closest('.logout-btn')) {
+    navItems.forEach((item) => {
+      item.addEventListener("click", (e) => {
+        if (e.target.closest(".logout-btn")) {
           return;
         }
 
-        const href = item.getAttribute('href');
-        if (href && href !== '#') {
+        const href = item.getAttribute("href");
+        if (href && href !== "#") {
           return;
         }
 
-        const icon = item.querySelector('.nav-icon')?.textContent?.trim();
+        const icon = item.querySelector(".nav-icon")?.textContent?.trim();
         const label = item.textContent.trim().toLowerCase();
-        if (icon === '🔍' || label.includes('search')) {
+        if (icon === "🔍" || label.includes("search")) {
           e.preventDefault();
           e.stopPropagation();
           openSearchOverlay();
@@ -184,42 +189,42 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         e.stopPropagation();
 
-        navItems.forEach(i => i.classList.remove('active'));
-        item.classList.add('active');
+        navItems.forEach((i) => i.classList.remove("active"));
+        item.classList.add("active");
       });
     });
   }
 
   // feed button navigation (if exists)
   if (feedBtn) {
-    feedBtn.addEventListener('click', () => {
-      window.location.href = 'index.html';
+    feedBtn.addEventListener("click", () => {
+      window.location.href = "index.html";
     });
   }
 
   // new message button -> open search overlay
   if (newMsgBtn) {
-    newMsgBtn.addEventListener('click', (e) => {
+    newMsgBtn.addEventListener("click", (e) => {
       e.preventDefault();
       openSearchOverlay();
     });
   }
 
   if (logoutBtn) {
-    logoutBtn.addEventListener('click', (ev) => {
+    logoutBtn.addEventListener("click", (ev) => {
       ev.preventDefault();
       ev.stopPropagation();
-      if (confirm('Logout from SocialSync?')) {
-        sessionStorage.removeItem('token');
-        window.location.href = 'login.html';
+      if (confirm("Logout from SocialSync?")) {
+        sessionStorage.removeItem("token");
+        window.location.href = "login.html";
       }
     });
   }
 
   // click conversation (delegation)
   if (convListContainer) {
-    convListContainer.addEventListener('click', (ev) => {
-      const item = ev.target.closest('.conversation-item');
+    convListContainer.addEventListener("click", (ev) => {
+      const item = ev.target.closest(".conversation-item");
       if (!item) return;
       const username = item.dataset.username;
       if (!username) return;
@@ -236,49 +241,50 @@ document.addEventListener('DOMContentLoaded', () => {
       Object.assign(userHeaders, opts.headers || {});
     }
 
-    userHeaders['Content-Type'] = userHeaders['Content-Type'] || 'application/json';
+    userHeaders["Content-Type"] =
+      userHeaders["Content-Type"] || "application/json";
 
-    let token = sessionStorage.getItem('token') || '';
+    let token = sessionStorage.getItem("token") || "";
     if (!token) {
-      sessionStorage.removeItem('token');
-      window.location.href = 'login.html';
-      throw new Error('No token found – redirecting to login');
+      sessionStorage.removeItem("token");
+      window.location.href = "login.html";
+      throw new Error("No token found – redirecting to login");
     }
-    token = token.replace(/^"(.*)"$/, '$1').trim();
+    token = token.replace(/^"(.*)"$/, "$1").trim();
 
     try {
-      const parts = token.split('.');
+      const parts = token.split(".");
       if (parts.length >= 2) {
         const payload = JSON.parse(atob(parts[1]));
         if (payload && payload.exp && Date.now() >= payload.exp * 1000) {
-          sessionStorage.removeItem('token');
-          window.location.href = 'login.html';
-          throw new Error('Token expired – please login again');
+          sessionStorage.removeItem("token");
+          window.location.href = "login.html";
+          throw new Error("Token expired – please login again");
         }
       }
     } catch (e) {
-      console.warn('Unable to decode token payload locally:', e);
+      console.warn("Unable to decode token payload locally:", e);
     }
 
-    userHeaders['Authorization'] = `Bearer ${token}`;
+    userHeaders["Authorization"] = `Bearer ${token}`;
 
     const fetchOpts = { ...opts, headers: userHeaders };
 
-    const method = (fetchOpts.method || 'GET').toUpperCase();
-    if (method === 'GET' && fetchOpts.body) delete fetchOpts.body;
+    const method = (fetchOpts.method || "GET").toUpperCase();
+    if (method === "GET" && fetchOpts.body) delete fetchOpts.body;
 
     const res = await fetch(API_BASE + path, fetchOpts);
 
     if (res.status === 401) {
-      const txt = await res.text().catch(()=>res.statusText);
-      console.error('401 from API:', txt);
-      sessionStorage.removeItem('token');
-      window.location.href = 'login.html';
-      throw new Error('Unauthorized – token rejected by server');
+      const txt = await res.text().catch(() => res.statusText);
+      console.error("401 from API:", txt);
+      sessionStorage.removeItem("token");
+      window.location.href = "login.html";
+      throw new Error("Unauthorized – token rejected by server");
     }
 
     if (!res.ok) {
-      const body = await res.json().catch(()=>({}));
+      const body = await res.json().catch(() => ({}));
       const errMsg = body.error || body.message || res.statusText;
       throw new Error(errMsg);
     }
@@ -287,70 +293,79 @@ document.addEventListener('DOMContentLoaded', () => {
 
   /* ----- Load conversations from backend (SORTED) ----- */
   /* ----- Load conversations from backend (SORTED + DEDUPED) ----- */
-/* ----- Load conversations from backend (SORTED + DEDUPED + UNREAD HIGHLIGHT) ----- */
-async function loadConversations() {
-  try {
-    const data = await apiFetch('/conversations');
-    if (!convListContainer) return;
-    convListContainer.innerHTML = '';
+  /* ----- Load conversations from backend (SORTED + DEDUPED + UNREAD HIGHLIGHT) ----- */
+  async function loadConversations() {
+    try {
+      const data = await apiFetch("/conversations");
+      if (!convListContainer) return;
+      convListContainer.innerHTML = "";
 
-    if (!data.conversations || !data.conversations.length) {
-      convListContainer.innerHTML = `
+      if (!data.conversations || !data.conversations.length) {
+        convListContainer.innerHTML = `
         <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">
           No conversations yet. Use search to find someone.
         </div>`;
-      updateMessageTotalBadge([]); // nothing unread
-      return;
-    }
+        updateMessageTotalBadge([]); // nothing unread
+        return;
+      }
 
-    // Dedupe by username (case-insensitive)
-    const dedupedByUsername = new Map();
-    data.conversations.forEach(conv => {
-      const key = String(conv.with?.username || conv.with?._id || '').toLowerCase();
-      if (!key) return;
+      // Dedupe by username (case-insensitive)
+      const dedupedByUsername = new Map();
+      data.conversations.forEach((conv) => {
+        const key = String(
+          conv.with?.username || conv.with?._id || ""
+        ).toLowerCase();
+        if (!key) return;
 
-      if (!dedupedByUsername.has(key)) {
-        dedupedByUsername.set(key, conv);
-      } else {
-        const existing = dedupedByUsername.get(key);
-        const existingTime = new Date(existing.lastMessage?.createdAt || 0).getTime();
-        const newTime = new Date(conv.lastMessage?.createdAt || 0).getTime();
-        if (newTime > existingTime) {
+        if (!dedupedByUsername.has(key)) {
           dedupedByUsername.set(key, conv);
+        } else {
+          const existing = dedupedByUsername.get(key);
+          const existingTime = new Date(
+            existing.lastMessage?.createdAt || 0
+          ).getTime();
+          const newTime = new Date(conv.lastMessage?.createdAt || 0).getTime();
+          if (newTime > existingTime) {
+            dedupedByUsername.set(key, conv);
+          }
         }
-      }
-    });
+      });
 
-    const sortedConvs = Array.from(dedupedByUsername.values()).sort((a, b) => {
-      const timeA = new Date(a.lastMessage?.createdAt || 0).getTime();
-      const timeB = new Date(b.lastMessage?.createdAt || 0).getTime();
-      return timeB - timeA;
-    });
-
-    if (data.conversations.length !== sortedConvs.length) {
-      console.warn(
-        `Removed ${data.conversations.length - sortedConvs.length} duplicate conversation(s) while rendering.`
+      const sortedConvs = Array.from(dedupedByUsername.values()).sort(
+        (a, b) => {
+          const timeA = new Date(a.lastMessage?.createdAt || 0).getTime();
+          const timeB = new Date(b.lastMessage?.createdAt || 0).getTime();
+          return timeB - timeA;
+        }
       );
-    }
 
-    sortedConvs.forEach(conv => {
-      const item = document.createElement('div');
-      item.className = 'conversation-item';
-      item.dataset.username = conv.with.username;
-
-      const displayName = conv.with.displayName || conv.with.username;
-      const lastMsg = conv.lastMessage?.text || 'No messages yet';
-      const timeStr = conv.lastMessage?.createdAt
-        ? timeAgo(new Date(conv.lastMessage.createdAt).getTime())
-        : '';
-
-      const unreadCount = typeof conv.unreadCount === 'number' ? conv.unreadCount : 0;
-      const isUnread = unreadCount > 0;
-      if (isUnread) {
-        item.classList.add('unread'); // <-- CSS will highlight this row
+      if (data.conversations.length !== sortedConvs.length) {
+        console.warn(
+          `Removed ${
+            data.conversations.length - sortedConvs.length
+          } duplicate conversation(s) while rendering.`
+        );
       }
 
-      item.innerHTML = `
+      sortedConvs.forEach((conv) => {
+        const item = document.createElement("div");
+        item.className = "conversation-item";
+        item.dataset.username = conv.with.username;
+
+        const displayName = conv.with.displayName || conv.with.username;
+        const lastMsg = conv.lastMessage?.text || "No messages yet";
+        const timeStr = conv.lastMessage?.createdAt
+          ? timeAgo(new Date(conv.lastMessage.createdAt).getTime())
+          : "";
+
+        const unreadCount =
+          typeof conv.unreadCount === "number" ? conv.unreadCount : 0;
+        const isUnread = unreadCount > 0;
+        if (isUnread) {
+          item.classList.add("unread"); // <-- CSS will highlight this row
+        }
+
+        item.innerHTML = `
         <div class="conversation-avatar">
           <svg width="50" height="50" viewBox="0 0 50 50" fill="none">
             <circle cx="25" cy="25" r="25" fill="#6B7FD7"/>
@@ -363,26 +378,26 @@ async function loadConversations() {
           <p class="last-message">${escapeHtml(lastMsg)}</p>
         </div>
         <div class="conversation-meta">
-          ${
-            isUnread
-              ? `<span class="unread-pill">${unreadCount}</span>`
-              : ''
-          }
+          ${isUnread ? `<span class="unread-pill">${unreadCount}</span>` : ""}
           <span class="time">${escapeHtml(timeStr)}</span>
         </div>
       `;
 
-      convListContainer.appendChild(item);
-    });
+        convListContainer.appendChild(item);
+      });
 
-    console.log('✅ Loaded', sortedConvs.length, 'conversations (sorted & deduped)');
-    updateMessageTotalBadge(sortedConvs); // update header badge
-  } catch (err) {
-    console.error('loadConversations error:', err);
-    if (!convListContainer) return;
+      console.log(
+        "✅ Loaded",
+        sortedConvs.length,
+        "conversations (sorted & deduped)"
+      );
+      updateMessageTotalBadge(sortedConvs); // update header badge
+    } catch (err) {
+      console.error("loadConversations error:", err);
+      if (!convListContainer) return;
 
-    if (err.code === 401 || /token/i.test(err.message)) {
-      convListContainer.innerHTML = `
+      if (err.code === 401 || /token/i.test(err.message)) {
+        convListContainer.innerHTML = `
         <div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass);display:flex;flex-direction:column;gap:8px">
           <div>Session expired. Please <strong>log in</strong> to continue.</div>
           <div style="display:flex;gap:8px">
@@ -391,55 +406,55 @@ async function loadConversations() {
           </div>
         </div>
       `;
-      document.getElementById('loginAgainBtn').addEventListener('click', () => {
-        sessionStorage.removeItem('token');
-        window.location.href = 'login.html';
-      });
-      document.getElementById('retryConvoBtn').addEventListener('click', () => {
-        loadConversations();
-      });
-    } else {
-      convListContainer.innerHTML = `
+        document
+          .getElementById("loginAgainBtn")
+          .addEventListener("click", () => {
+            sessionStorage.removeItem("token");
+            window.location.href = "login.html";
+          });
+        document
+          .getElementById("retryConvoBtn")
+          .addEventListener("click", () => {
+            loadConversations();
+          });
+      } else {
+        convListContainer.innerHTML = `
         <div style="color:#f66">
           Failed to load conversations: ${escapeHtml(err.message)}
         </div>`;
+      }
     }
   }
-}
 
-/* Total unread badge in the header */
-function updateMessageTotalBadge(conversations) {
-  const headerBadge = document.getElementById('msgHeaderUnreadTotal');
-  if (!headerBadge) return;
+  /* Total unread badge in the header */
+  function updateMessageTotalBadge(conversations) {
+    const headerBadge = document.getElementById("msgHeaderUnreadTotal");
+    if (!headerBadge) return;
 
-  const totalUnread = conversations.reduce((sum, c) => {
-    const n = typeof c.unreadCount === 'number' ? c.unreadCount : 0;
-    return sum + n;
-  }, 0);
+    const totalUnread = conversations.reduce((sum, c) => {
+      const n = typeof c.unreadCount === "number" ? c.unreadCount : 0;
+      return sum + n;
+    }, 0);
 
-  if (totalUnread > 0) {
-    headerBadge.textContent = totalUnread;
-    headerBadge.classList.add('visible');
-  } else {
-    headerBadge.textContent = '';
-    headerBadge.classList.remove('visible');
+    if (totalUnread > 0) {
+      headerBadge.textContent = totalUnread;
+      headerBadge.classList.add("visible");
+    } else {
+      headerBadge.textContent = "";
+      headerBadge.classList.remove("visible");
+    }
   }
-}
-
-
-
-
 
   /* ----- Search overlay ----- */
   function openSearchOverlay() {
-    const overlay = document.createElement('div');
-    overlay.style.position = 'fixed';
-    overlay.style.inset = '0';
-    overlay.style.background = 'rgba(3,6,10,0.6)';
+    const overlay = document.createElement("div");
+    overlay.style.position = "fixed";
+    overlay.style.inset = "0";
+    overlay.style.background = "rgba(3,6,10,0.6)";
     overlay.style.zIndex = 9999;
-    overlay.style.display = 'flex';
-    overlay.style.alignItems = 'center';
-    overlay.style.justifyContent = 'center';
+    overlay.style.display = "flex";
+    overlay.style.alignItems = "center";
+    overlay.style.justifyContent = "center";
     overlay.innerHTML = `
       <div style="width:720px;max-width:94%;background:linear-gradient(180deg,#0f0f10,#0b0b0b);border:1px solid rgba(255,255,255,0.04);padding:18px;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.7)">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
@@ -452,57 +467,70 @@ function updateMessageTotalBadge(conversations) {
     `;
     document.body.appendChild(overlay);
     const close = () => overlay.remove();
-    overlay.querySelector('#closeSearch').addEventListener('click', close);
-    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close(); });
-    const input = overlay.querySelector('#searchInput');
-    const results = overlay.querySelector('#searchResults');
+    overlay.querySelector("#closeSearch").addEventListener("click", close);
+    overlay.addEventListener("click", (ev) => {
+      if (ev.target === overlay) close();
+    });
+    const input = overlay.querySelector("#searchInput");
+    const results = overlay.querySelector("#searchResults");
 
     let delay;
-    input.addEventListener('input', () => {
+    input.addEventListener("input", () => {
       clearTimeout(delay);
       delay = setTimeout(async () => {
         const q = input.value.trim();
-        if (!q) { results.innerHTML = ''; return; }
+        if (!q) {
+          results.innerHTML = "";
+          return;
+        }
         try {
           const r = await apiFetch(`/search-users?q=${encodeURIComponent(q)}`);
-          results.innerHTML = '';
+          results.innerHTML = "";
           if (!r.results || !r.results.length) {
             results.innerHTML = `<div style="color:var(--muted);padding:12px;border-radius:8px;background:var(--glass)">No users found</div>`;
             return;
           }
-          r.results.forEach(u => {
-            const node = document.createElement('div');
-            node.style.display = 'flex';
-            node.style.alignItems = 'center';
-            node.style.justifyContent = 'space-between';
-            node.style.padding = '8px';
-            node.style.borderRadius = '8px';
-            node.style.background = 'rgba(255,255,255,0.01)';
-            const display = u.displayName || u.username || 'Unknown';
+          r.results.forEach((u) => {
+            const node = document.createElement("div");
+            node.style.display = "flex";
+            node.style.alignItems = "center";
+            node.style.justifyContent = "space-between";
+            node.style.padding = "8px";
+            node.style.borderRadius = "8px";
+            node.style.background = "rgba(255,255,255,0.01)";
+            const display = u.displayName || u.username || "Unknown";
             node.innerHTML = `
               <div style="display:flex;gap:10px;align-items:center">
-                <div style="width:44px;height:44px;border-radius:50%;background:#6b7fd7;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">${escapeHtml(display.charAt(0).toUpperCase())}</div>
+                <div style="width:44px;height:44px;border-radius:50%;background:#6b7fd7;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">${escapeHtml(
+                  display.charAt(0).toUpperCase()
+                )}</div>
                 <div>
                   <div style="font-weight:800">${escapeHtml(display)}</div>
-                  <div style="color:var(--muted);font-size:13px">@${escapeHtml(u.username)}</div>
+                  <div style="color:var(--muted);font-size:13px">@${escapeHtml(
+                    u.username
+                  )}</div>
                 </div>
               </div>
               <div style="display:flex;gap:8px;align-items:center">
-                <button class="msgBtn" data-username="${escapeHtml(u.username)}" style="padding:8px 12px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-weight:700">Message</button>
+                <button class="msgBtn" data-username="${escapeHtml(
+                  u.username
+                )}" style="padding:8px 12px;border-radius:8px;border:none;background:var(--accent);color:white;cursor:pointer;font-weight:700">Message</button>
               </div>
             `;
             results.appendChild(node);
           });
 
-          results.querySelectorAll('.msgBtn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
+          results.querySelectorAll(".msgBtn").forEach((btn) => {
+            btn.addEventListener("click", async (e) => {
               const to = btn.dataset.username;
               close();
               openChatThread(to);
             });
           });
         } catch (err) {
-          results.innerHTML = `<div style="color:#f66;padding:8px">Search failed: ${escapeHtml(err.message)}</div>`;
+          results.innerHTML = `<div style="color:#f66;padding:8px">Search failed: ${escapeHtml(
+            err.message
+          )}</div>`;
         }
       }, 220);
     });
@@ -513,25 +541,35 @@ function updateMessageTotalBadge(conversations) {
   /* ----- Chat modal ----- */
   async function openChatThread(username) {
     try {
-      const data = await apiFetch(`/conversations/user/${encodeURIComponent(username)}`);
+      const data = await apiFetch(
+        `/conversations/user/${encodeURIComponent(username)}`
+      );
       const convUser = data.with;
       const messages = data.messages || [];
 
-      const overlay = document.createElement('div');
-      overlay.style.position = 'fixed';
-      overlay.style.inset = '0';
-      overlay.style.background = 'rgba(3,6,10,0.6)';
+      const overlay = document.createElement("div");
+      overlay.style.position = "fixed";
+      overlay.style.inset = "0";
+      overlay.style.background = "rgba(3,6,10,0.6)";
       overlay.style.zIndex = 9999;
-      overlay.style.display = 'flex';
-      overlay.style.alignItems = 'center';
-      overlay.style.justifyContent = 'center';
+      overlay.style.display = "flex";
+      overlay.style.alignItems = "center";
+      overlay.style.justifyContent = "center";
       overlay.innerHTML = `
         <div style="width:760px;max-width:96%;height:80vh;max-height:760px;background:linear-gradient(180deg,#0f0f10,#0b0b0b);border:1px solid rgba(255,255,255,0.04);padding:12px;border-radius:12px;display:flex;flex-direction:column;overflow:hidden">
           <div style="display:flex;align-items:center;gap:12px;padding:8px;border-bottom:1px solid rgba(255,255,255,0.03)">
-            <div style="width:44px;height:44px;border-radius:50%;background:#6b7fd7;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">${escapeHtml((convUser.displayName||convUser.username).charAt(0).toUpperCase())}</div>
+            <div style="width:44px;height:44px;border-radius:50%;background:#6b7fd7;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700">${escapeHtml(
+              (convUser.displayName || convUser.username)
+                .charAt(0)
+                .toUpperCase()
+            )}</div>
             <div style="flex:1">
-              <div style="font-weight:800">${escapeHtml(convUser.displayName || convUser.username)}</div>
-              <div style="color:var(--muted);font-size:13px">@${escapeHtml(convUser.username)}</div>
+              <div style="font-weight:800">${escapeHtml(
+                convUser.displayName || convUser.username
+              )}</div>
+              <div style="color:var(--muted);font-size:13px">@${escapeHtml(
+                convUser.username
+              )}</div>
             </div>
             <div style="display:flex;gap:8px;align-items:center">
               <button id="closeThread" style="background:transparent;border:none;color:#bdbdbd;font-weight:700;cursor:pointer">✕</button>
@@ -552,28 +590,36 @@ function updateMessageTotalBadge(conversations) {
         overlay.remove();
         loadConversations();
       };
-      overlay.querySelector('#closeThread').addEventListener('click', close);
-      overlay.addEventListener('click', (ev) => { if (ev.target === overlay) close(); });
+      overlay.querySelector("#closeThread").addEventListener("click", close);
+      overlay.addEventListener("click", (ev) => {
+        if (ev.target === overlay) close();
+      });
 
-      const msgScroll = overlay.querySelector('#msgScroll');
-      const chatInput = overlay.querySelector('#chatInput');
-      const sendBtn = overlay.querySelector('#sendChat');
+      const msgScroll = overlay.querySelector("#msgScroll");
+      const chatInput = overlay.querySelector("#chatInput");
+      const sendBtn = overlay.querySelector("#sendChat");
 
       function renderMessages(msgs) {
-        msgScroll.innerHTML = '';
-        msgs.forEach(m => {
-          const bubble = document.createElement('div');
-          const mine = String((m.sender && (m.sender._id || m.sender))) === String(getMyIdFromToken());
-          bubble.style.alignSelf = mine ? 'flex-end' : 'flex-start';
-          bubble.style.maxWidth = '78%';
-          bubble.style.padding = '10px 12px';
-          bubble.style.borderRadius = '10px';
-          bubble.style.background = mine ? 'linear-gradient(90deg,#6b7fd7,#5563c8)' : 'rgba(255,255,255,0.02)';
-          bubble.style.color = mine ? '#fff' : 'var(--text)';
-          bubble.style.fontSize = '14px';
+        msgScroll.innerHTML = "";
+        msgs.forEach((m) => {
+          const bubble = document.createElement("div");
+          const mine =
+            String(m.sender && (m.sender._id || m.sender)) ===
+            String(getMyIdFromToken());
+          bubble.style.alignSelf = mine ? "flex-end" : "flex-start";
+          bubble.style.maxWidth = "78%";
+          bubble.style.padding = "10px 12px";
+          bubble.style.borderRadius = "10px";
+          bubble.style.background = mine
+            ? "linear-gradient(90deg,#6b7fd7,#5563c8)"
+            : "rgba(255,255,255,0.02)";
+          bubble.style.color = mine ? "#fff" : "var(--text)";
+          bubble.style.fontSize = "14px";
           bubble.innerHTML = `
             <div>${escapeHtml(m.text)}</div>
-            <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:right">${timeAgo(new Date(m.createdAt).getTime())}</div>
+            <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:right">${timeAgo(
+              new Date(m.createdAt).getTime()
+            )}</div>
           `;
           msgScroll.appendChild(bubble);
         });
@@ -582,9 +628,9 @@ function updateMessageTotalBadge(conversations) {
 
       renderMessages(messages);
 
-      sendBtn.addEventListener('click', () => sendMessage());
-      chatInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
+      sendBtn.addEventListener("click", () => sendMessage());
+      chatInput.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           sendMessage();
         }
@@ -595,45 +641,53 @@ function updateMessageTotalBadge(conversations) {
         if (!text) return;
         try {
           const body = { text };
-          await apiFetch(`/conversations/user/${encodeURIComponent(convUser.username)}/messages`, {
-            method: 'POST',
-            body: JSON.stringify(body)
-          });
+          await apiFetch(
+            `/conversations/user/${encodeURIComponent(
+              convUser.username
+            )}/messages`,
+            {
+              method: "POST",
+              body: JSON.stringify(body),
+            }
+          );
           // reload messages after send
-          const refreshed = await apiFetch(`/conversations/user/${encodeURIComponent(convUser.username)}`);
+          const refreshed = await apiFetch(
+            `/conversations/user/${encodeURIComponent(convUser.username)}`
+          );
           renderMessages(refreshed.messages || []);
-          chatInput.value = '';
+          chatInput.value = "";
           loadConversations();
         } catch (err) {
-          alert('Send failed: ' + err.message);
+          alert("Send failed: " + err.message);
         }
       }
-
     } catch (err) {
-      alert('Failed to open conversation: ' + err.message);
+      alert("Failed to open conversation: " + err.message);
     }
   }
 
   /* ----- Helper functions ----- */
   function getMyIdFromToken() {
     try {
-      let tk = sessionStorage.getItem('token');
+      let tk = sessionStorage.getItem("token");
       if (!tk) return null;
-      tk = tk.replace(/^"(.*)"$/, '$1').trim();
-      const parts = tk.split('.');
+      tk = tk.replace(/^"(.*)"$/, "$1").trim();
+      const parts = tk.split(".");
       if (parts.length < 2) return null;
       const payload = JSON.parse(atob(parts[1]));
-      return String(payload.userId || payload.id || payload._id || payload.sub || '');
+      return String(
+        payload.userId || payload.id || payload._id || payload.sub || ""
+      );
     } catch (e) {
-      console.warn('Failed to decode token locally:', e);
+      console.warn("Failed to decode token locally:", e);
       return null;
     }
   }
 
   function timeAgo(ts) {
-    if (!ts) return '';
+    if (!ts) return "";
     const s = Math.floor((Date.now() - ts) / 1000);
-    if (s < 10) return 'just now';
+    if (s < 10) return "just now";
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
     if (m < 60) return `${m}m ago`;
@@ -644,7 +698,7 @@ function updateMessageTotalBadge(conversations) {
   }
 
   function escapeHtml(unsafe) {
-    if (unsafe === undefined || unsafe === null) return '';
+    if (unsafe === undefined || unsafe === null) return "";
     return String(unsafe)
       .replace(/&/g, "&amp;")
       .replace(/</g, "&lt;")
