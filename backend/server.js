@@ -1712,7 +1712,7 @@ app.get("/api/messages/unread/count", auth, async (req, res) => {
 });
 
 // ---- NEW: /conversations (used by frontend messages.js) ----
-app.get("/conversations", auth, async (req, res) => {
+app.get("api/conversations", auth, async (req, res) => {
   try {
     const messages = await Message.find({
       $or: [{ sender: req.user._id }, { recipients: req.user._id }],
@@ -1769,7 +1769,7 @@ app.get("/conversations", auth, async (req, res) => {
 });
 
 // ---- NEW: /conversations/user/:username ----
-app.get("/conversations/user/:username", auth, async (req, res) => {
+app.get("api/conversations/user/:username", auth, async (req, res) => {
   try {
     const username = req.params.username;
     const otherUser = await User.findOne({ username });
@@ -1825,64 +1825,69 @@ app.get("/conversations/user/:username", auth, async (req, res) => {
 });
 
 // ---- NEW: POST /conversations/user/:username/messages ----
-app.post("/conversations/user/:username/messages", auth, async (req, res) => {
-  try {
-    const username = req.params.username;
-    const { text } = req.body;
-    const trimmed = (text || "").trim();
-    if (!trimmed) {
-      return res.status(400).json({ message: "Text is required" });
+app.post(
+  "api/conversations/user/:username/messages",
+  auth,
+  async (req, res) => {
+    try {
+      const username = req.params.username;
+      const { text } = req.body;
+      const trimmed = (text || "").trim();
+      if (!trimmed) {
+        return res.status(400).json({ message: "Text is required" });
+      }
+
+      const toUser = await User.findOne({ username });
+      if (!toUser) {
+        return res.status(404).json({ message: "User not found" });
+      }
+
+      const fromId = req.user._id.toString();
+      const toId = toUser._id.toString();
+      const conversationId = [fromId, toId].sort().join("_");
+
+      const newMessage = await Message.create({
+        conversationId,
+        sender: fromId,
+        recipients: [toId],
+        text: trimmed,
+        deliveredTo: [],
+        readBy: [],
+      });
+
+      const populated = await Message.findById(newMessage._id)
+        .populate("sender", "username displayName avatarUrl")
+        .lean();
+
+      const payload = {
+        id: populated._id,
+        conversationId,
+        sender: {
+          id: populated.sender._id,
+          username: populated.sender.username,
+          displayName:
+            populated.sender.displayName || populated.sender.username,
+          avatarUrl: populated.sender.avatarUrl || null,
+        },
+        text: populated.text,
+        createdAt: populated.createdAt,
+        delivered: false,
+        read: false,
+      };
+
+      // emit via socket if receiver is online
+      const receiverSocketId = connectedUsers.get(toId);
+      if (receiverSocketId) {
+        io.to(receiverSocketId).emit("new_message", payload);
+      }
+
+      res.status(201).json(payload);
+    } catch (err) {
+      console.error("POST /conversations/user/:username/messages error:", err);
+      res.status(500).json({ message: "Server error" });
     }
-
-    const toUser = await User.findOne({ username });
-    if (!toUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
-
-    const fromId = req.user._id.toString();
-    const toId = toUser._id.toString();
-    const conversationId = [fromId, toId].sort().join("_");
-
-    const newMessage = await Message.create({
-      conversationId,
-      sender: fromId,
-      recipients: [toId],
-      text: trimmed,
-      deliveredTo: [],
-      readBy: [],
-    });
-
-    const populated = await Message.findById(newMessage._id)
-      .populate("sender", "username displayName avatarUrl")
-      .lean();
-
-    const payload = {
-      id: populated._id,
-      conversationId,
-      sender: {
-        id: populated.sender._id,
-        username: populated.sender.username,
-        displayName: populated.sender.displayName || populated.sender.username,
-        avatarUrl: populated.sender.avatarUrl || null,
-      },
-      text: populated.text,
-      createdAt: populated.createdAt,
-      delivered: false,
-      read: false,
-    };
-
-    // emit via socket if receiver is online
-    const receiverSocketId = connectedUsers.get(toId);
-    if (receiverSocketId) {
-      io.to(receiverSocketId).emit("new_message", payload);
-    }
-
-    res.status(201).json(payload);
-  } catch (err) {
-    console.error("POST /conversations/user/:username/messages error:", err);
-    res.status(500).json({ message: "Server error" });
   }
-});
+);
 
 // ======================================================
 // =============== SERVER START =========================
