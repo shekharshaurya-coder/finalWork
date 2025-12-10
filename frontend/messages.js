@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-  const API_BASE = "https://socialsync-ow8q.onrender.com";
+  const API_BASE = "https://socialsync-ow8q.onrender.com/api";
   const convListContainer = document.querySelector(".conversations-list");
   const navItems = document.querySelectorAll(".nav-item");
 

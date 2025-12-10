@@ -41,7 +41,7 @@ const esClient = new Client({ node: "http://localhost:9200" });
 
 // ============== INITIALIZE APP ==============
 const app = express();
-app.use(express.json({ limit: "50mb" }));
+// app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
@@ -112,7 +112,7 @@ app.use((req, res, next) => {
   next();
 });
 //for messages
-app.use("/api", messagesRouter);
+// app.use("/api", messagesRouter);
 app.use("/api/conversations", auth, messagesRouter); // ensure auth is used here
 
 //following list end points
