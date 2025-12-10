@@ -1,650 +1,394 @@
-// server.js - FIXED VERSION
+// server.js – cleaned & aligned with frontend messages.js
+
 require("dotenv").config();
 
-console.log("🔐 ADMIN_USERNAMES from .env:", process.env.ADMIN_USERNAMES);
-
 const path = require("path");
+const http = require("http");
+const os = require("os");
 const express = require("express");
-const User = require("./models/User");
-const Post = require("./models/Post");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const auth = require("./middleware/auth");
+const mongoose = require("mongoose");
+const Sentiment = require("sentiment");
+const { Server } = require("socket.io");
+
+// ========= MODELS =========
+const User = require("./models/User");
+const Post = require("./models/Post");
+const Follow = require("./models/Follow");
+const Media = require("./models/Media");
+const Comment = require("./models/Comment");
+const Notification = require("./models/Notification");
+const Message = require("./models/Message");
+
+// ========= DB & REDIS =========
 const connectDB = require("./db");
 const { redisHelpers } = require("./db");
-const Sentiment = require("sentiment");
+
+// ========= MISC =========
+const auth = require("./middleware/auth");
+const adminAuth = require("./middleware/adminAuth");
+const logger = require("./services/logger");
+const mediaQueue = require("./queues/media.queue");
+const trendingCron = require("./cron/trendingCron"); // just require to start cron
 const sentimentAnalyzer = new Sentiment();
-const mongoose = require("mongoose");
+
 const {
   Types: { ObjectId },
+  Types,
 } = mongoose;
-const Follow = require("./models/Follow");
-const { Server } = require("socket.io");
-const http = require("http");
-const { Types } = require("mongoose");
-//const authRoutes = require("./routes/auth.cjs");
-const notificationsRouter = require("./routes/notifications"); // path you chose
-const messagesRouter = require("./routes/messages");
-const trendingRouter = require("./routes/trending");
-const logDemoRoutes = require("./routes/logDemo");
 
-// ============== BULLMQ QUEUES ==============
-const mediaQueue = require("./queues/media.queue");
-
-// ============== ADMIN ==============
-const logger = require("./services/logger");
-const adminAuth = require("./middleware/adminAuth");
-
-// ============== ELASTIC-SEARCH ==============
+// ========= ELASTICSEARCH =========
 const { Client } = require("@elastic/elasticsearch");
 const esClient = new Client({ node: "http://localhost:9200" });
 
-// ============== INITIALIZE APP ==============
+// ========= ROUTERS =========
+const notificationsRouter = require("./routes/notifications");
+const trendingRouter = require("./routes/trending");
+const logDemoRoutes = require("./routes/logDemo");
+// (auth.cjs, users.js, Follow.js, messages.js are not mounted here on purpose;
+//  most of their logic has been pulled into this file for now)
+
+// ========= APP INIT =========
 const app = express();
-// app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+const server = http.createServer(app);
 
-//app.use(express.static("frontend"));
-//app.use("/api/auth", authRoutes);
-app.use("/api/notifications", notificationsRouter);
-app.use("/api/trending", trendingRouter);
+// --- core middlewares (only once) ---
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// if using socket.io, attach io to app so routes can emit
+// --- CORS ---
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://socialsync-ow8q.onrender.com",
+  process.env.FRONTEND_ORIGIN,
+].filter(Boolean);
 
-//writen by shekhar
-
-async function logplease(req, event, desc, md) {
-  await logger.logFromRequest(req, {
-    eventType: event,
-    description: desc,
-    metadata: md,
-  });
-}
-
-// Enable CORS for development
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  const origin = req.headers.origin;
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  } else {
+    res.header("Access-Control-Allow-Origin", "*");
+  }
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With"
+  );
+  res.header("Access-Control-Allow-Credentials", "true");
+
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
   next();
 });
 
-// Serve static files from frontend folder
+// --- static files ---
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use(express.static(path.join(__dirname, "..", "frontend")));
 
-// Redirect root to login
 app.get("/", (req, res) => {
   res.redirect("/login.html");
 });
 
-// ============== CONNECT DATABASE ==============
+// ========= DB CONNECT =========
 connectDB();
 
-// ============== AUTH ROUTES ==============
-//socket io
-const server = http.createServer(app); // ✅ ADD THIS
-
-// ✅ ADD SOCKET.IO SETUP
-// const io = new Server(server, {
-//   cors: {
-//     origin: "*",
-//     methods: ["GET", "POST"],
-//   },
-// });
-// app.set("io", io); // after io created
-
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-// Enable CORS for development
-
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+// ========= SMALL LOG WRAPPER FOR HTTP =========
+async function logplease(req, eventType, description, metadata) {
+  try {
+    await logger.logFromRequest(req, {
+      eventType,
+      description,
+      metadata,
+    });
+  } catch (err) {
+    console.warn("Logger error (HTTP):", err.message);
   }
-  next();
-});
-//for messages
-// app.use("/api", messagesRouter);
-app.use("/api/conversations", auth, messagesRouter); // ensure auth is used here
+}
 
-//following list end points
-
-// ==============================
-// GET FOLLOWERS OF A USER
-// ==============================
-// GET followers (users who follow :id) with followerCount
-app.use("/demo", logDemoRoutes);
+// ========= SOCKET.IO SETUP =========
 app.set("trust proxy", 1);
+
 const io = new Server(server, {
   cors: {
-    origin: [
-      "https://socialsync-ow8q.onrender.com",
-      "https://<YOUR-VERCEL-FRONTEND>.vercel.app",
-    ],
+    origin: allowedOrigins,
     methods: ["GET", "POST"],
     credentials: true,
   },
 });
 
-app.get("/api/users/:id/followers", async (req, res) => {
-  try {
-    const userId = req.params.id;
-    console.log("[route] GET /api/users/:id/followers ->", userId);
-
-    const followDocs = await Follow.find({ followee: userId }).populate(
-      "follower",
-      "username name avatarUrl"
-    );
-
-    if (!followDocs || followDocs.length === 0) {
-      return res.json([]);
-    }
-
-    const userIds = followDocs
-      .map((f) => f.follower && f.follower._id)
-      .filter(Boolean)
-      .map((id) => id.toString());
-
-    const counts = await Follow.aggregate([
-      {
-        $match: {
-          followee: { $in: userIds.map((id) => new Types.ObjectId(id)) },
-        },
-      },
-      { $group: { _id: "$followee", count: { $sum: 1 } } },
-    ]);
-
-    const countMap = counts.reduce((m, c) => {
-      m[c._id.toString()] = c.count;
-      return m;
-    }, {});
-
-    const followers = followDocs.map((f) => {
-      const u = f.follower;
-      return {
-        id: u._id,
-        username: u.username,
-        name: u.name,
-        avatarUrl: u.avatarUrl || null,
-        followerCount: countMap[u._id.toString()] || 0,
-      };
-    });
-
-    return res.json(followers);
-  } catch (err) {
-    console.error("Error in /api/users/:id/followers:", err);
-    // dev-only: send stack for quick debugging; remove in prod
-    return res
-      .status(500)
-      .json({ error: "Server error", message: err.message, stack: err.stack });
-  }
-});
-
-app.get("/api/users/:id/following-list", async (req, res) => {
-  try {
-    const userId = req.params.id;
-    console.log("[route] GET /api/users/:id/following-list ->", userId);
-
-    const followDocs = await Follow.find({ follower: userId }).populate(
-      "followee",
-      "username name avatarUrl"
-    );
-
-    if (!followDocs || followDocs.length === 0) {
-      return res.json([]);
-    }
-
-    const userIds = followDocs
-      .map((f) => f.followee && f.followee._id)
-      .filter(Boolean)
-      .map((id) => id.toString());
-
-    const counts = await Follow.aggregate([
-      {
-        $match: {
-          followee: { $in: userIds.map((id) => new Types.ObjectId(id)) },
-        },
-      },
-      { $group: { _id: "$followee", count: { $sum: 1 } } },
-    ]);
-
-    const countMap = counts.reduce((m, c) => {
-      m[c._id.toString()] = c.count;
-      return m;
-    }, {});
-
-    const following = followDocs.map((f) => {
-      const u = f.followee;
-      return {
-        id: u._id,
-        username: u.username,
-        name: u.name,
-        avatarUrl: u.avatarUrl || null,
-        followerCount: countMap[u._id.toString()] || 0,
-      };
-    });
-
-    return res.json(following);
-  } catch (err) {
-    console.error("Error in /api/users/:id/following-list:", err);
-    // dev-only: send stack for quick debugging; remove in prod
-    return res
-      .status(500)
-      .json({ error: "Server error", message: err.message, stack: err.stack });
-  }
-});
-
-// Serve static files
-app.use(express.static(path.join(__dirname, "..", "frontend")));
-
-app.get("/", (req, res) => {
-  res.redirect("/login.html");
-});
-
-// Connect to database
-connectDB();
-
-// ============== SOCKET.IO AUTHENTICATION ==============
-// Store connected users: { userId: socketId }
+// Connected users map: userId -> socketId
 const connectedUsers = new Map();
 
+// Socket auth using JWT
 io.use((socket, next) => {
-  const token = socket.handshake.auth.token;
-
-  if (!token) {
-    return next(new Error("Authentication error"));
-  }
+  const token = socket.handshake.auth?.token;
+  if (!token) return next(new Error("Authentication error"));
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    socket.userId = decoded.sub;
+    socket.userId = decoded.sub || decoded.userId || decoded._id || decoded.id;
     socket.username = decoded.username;
+    if (!socket.userId) return next(new Error("Invalid token payload"));
     next();
   } catch (err) {
-    next(new Error("Authentication error"));
+    return next(new Error("Authentication error"));
   }
 });
-let socket = null;
 
-// ============== SOCKET.IO CONNECTIONS ==============
+// Socket events
 io.on("connection", (socket) => {
-  console.log("✅ User connected:", socket.username, "Socket ID:", socket.id);
+  console.log("✅ Socket connected:", socket.username, socket.id);
 
-  // Store user's socket ID
-  connectedUsers.set(socket.userId, socket.id);
+  connectedUsers.set(String(socket.userId), socket.id);
+  socket.join(String(socket.userId));
 
-  // Notify user is online
   socket.broadcast.emit("user_online", {
     userId: socket.userId,
     username: socket.username,
   });
 
-  // Send list of online users
-  const onlineUsers = Array.from(connectedUsers.keys());
-  io.emit("online_users", onlineUsers);
+  io.emit("online_users", Array.from(connectedUsers.keys()));
 
-  // Join user's personal room
-  socket.join(socket.userId);
-
-  // Handle typing indicator
+  // Typing indicator
   socket.on("typing", (data) => {
-    const recipientSocketId = connectedUsers.get(data.recipientId);
+    const recipientSocketId = connectedUsers.get(String(data.recipientId));
     if (recipientSocketId) {
       io.to(recipientSocketId).emit("user_typing", {
         userId: socket.userId,
         username: socket.username,
-        isTyping: data.isTyping,
+        isTyping: !!data.isTyping,
       });
     }
   });
 
-  // Handle new message
-  // Handle new message
-  // Find this section in your server.js (around line 150-200)
-  // Replace the existing socket.on('send_message') handler with this:
-
-  // Handle new message
-  // Handle new message
+  // Send message (socket)
   socket.on("send_message", async (data) => {
     try {
-      const Message = require("./models/Message");
-      // ❌ const Notification = require("./models/Notification");  // REMOVE THIS LINE
+      const recipientId = String(data.recipientId);
+      const senderId = String(socket.userId);
 
-      console.log(
-        "📤 Sending message from:",
-        socket.username,
-        "to:",
-        data.recipientId
-      );
+      if (!recipientId || !data.text?.trim()) return;
 
-      // Create conversation ID (sorted user IDs)
-      const conversationId = [socket.userId, data.recipientId].sort().join("_");
+      const conversationId = [senderId, recipientId].sort().join("_");
 
-      // Save message to database
       const newMessage = await Message.create({
-        conversationId: conversationId,
-        sender: socket.userId,
-        recipients: [data.recipientId],
-        text: data.text,
+        conversationId,
+        sender: senderId,
+        recipients: [recipientId],
+        text: data.text.trim(),
         deliveredTo: [],
         readBy: [],
       });
 
-      console.log("✅ Message saved to database:", newMessage._id);
-
-      // Populate sender info
-      logplease(req, "MESSAGE_SENT", "User sent a message", {
-        recipientId: data.recipientId,
-        messageId: newMessage._id,
-      });
-      const populatedMessage = await Message.findById(newMessage._id)
+      const populated = await Message.findById(newMessage._id)
         .populate("sender", "username displayName avatarUrl")
         .lean();
 
-      const messageData = {
-        id: populatedMessage._id,
-        conversationId: conversationId,
+      const payload = {
+        id: populated._id,
+        conversationId,
         sender: {
-          id: populatedMessage.sender._id,
-          username: populatedMessage.sender.username,
+          id: populated.sender._id,
+          username: populated.sender.username,
           displayName:
-            populatedMessage.sender.displayName ||
-            populatedMessage.sender.username,
-          avatarUrl: populatedMessage.sender.avatarUrl,
+            populated.sender.displayName || populated.sender.username,
+          avatarUrl: populated.sender.avatarUrl || null,
         },
-        text: populatedMessage.text,
-        createdAt: populatedMessage.createdAt,
+        text: populated.text,
+        createdAt: populated.createdAt,
         delivered: false,
         read: false,
       };
 
-      // ✅ NO MORE Notification.create() HERE
-      // (messages will still be delivered via 'new_message' event)
+      // to sender
+      socket.emit("message_sent", payload);
 
-      // Send to sender (confirmation)
-      socket.emit("message_sent", messageData);
-
-      // Send to recipient if online
-      const recipientSocketId = connectedUsers.get(data.recipientId);
+      // to recipient if online
+      const recipientSocketId = connectedUsers.get(recipientId);
       if (recipientSocketId) {
-        io.to(recipientSocketId).emit("new_message", messageData);
-
-        // Mark as delivered
+        io.to(recipientSocketId).emit("new_message", payload);
         await Message.findByIdAndUpdate(newMessage._id, {
-          $addToSet: { deliveredTo: data.recipientId },
+          $addToSet: { deliveredTo: recipientId },
         });
-
         socket.emit("message_delivered", { messageId: newMessage._id });
-        logplease(req, "MESSAGE_DELIVERED", "Message delivered to recipient", {
-          recipientId: data.recipientId,
-          messageId: newMessage._id,
-        });
-
-        console.log("✅ Message delivered to online recipient");
-      } else {
-        console.log("📪 Recipient offline (message stored, no socket yet)");
       }
-
-      console.log(
-        "📩 Message send complete:",
-        socket.username,
-        "→",
-        data.recipientId
-      );
-    } catch (error) {
-      console.error("❌ Error sending message:", error);
+    } catch (err) {
+      console.error("Socket send_message error:", err);
       socket.emit("message_error", { error: "Failed to send message" });
     }
   });
 
-  // Handle message read
+  // Mark messages read
   socket.on("mark_read", async (data) => {
     try {
-      const Message = require("./models/Message");
+      const { conversationId, senderId } = data;
+      const userId = String(socket.userId);
 
       const result = await Message.updateMany(
         {
-          conversationId: data.conversationId,
-          sender: data.senderId,
-          readBy: { $ne: socket.userId },
+          conversationId,
+          sender: senderId,
+          readBy: { $ne: userId },
         },
-        {
-          $addToSet: { readBy: socket.userId },
-        }
+        { $addToSet: { readBy: userId } }
       );
 
-      console.log(`✅ Marked ${result.modifiedCount} messages as read`);
       if (result.modifiedCount > 0) {
-        logplease("MESSAGE_READ", "User read messages in a conversation", {
-          conversationId: data.conversationId,
-          senderId: data.senderId,
-        });
+        const senderSocketId = connectedUsers.get(String(senderId));
+        if (senderSocketId) {
+          io.to(senderSocketId).emit("messages_read", {
+            conversationId,
+            readBy: userId,
+          });
+        }
       }
-
-      // Notify sender that messages were read
-      const senderSocketId = connectedUsers.get(data.senderId);
-      if (senderSocketId) {
-        io.to(senderSocketId).emit("messages_read", {
-          conversationId: data.conversationId,
-          readBy: socket.userId,
-        });
-      }
-    } catch (error) {
-      console.error("Error marking messages as read:", error);
+    } catch (err) {
+      console.error("Socket mark_read error:", err);
     }
   });
 
-  // Handle disconnect
   socket.on("disconnect", () => {
-    console.log("❌ User disconnected:", socket.username);
-    connectedUsers.delete(socket.userId);
-
-    // Notify user is offline
+    console.log("❌ Socket disconnected:", socket.username, socket.id);
+    connectedUsers.delete(String(socket.userId));
     socket.broadcast.emit("user_offline", { userId: socket.userId });
-
-    // Update online users list
-    const onlineUsers = Array.from(connectedUsers.keys());
-    io.emit("online_users", onlineUsers);
+    io.emit("online_users", Array.from(connectedUsers.keys()));
   });
 });
 
-// ============== REST API ROUTES ==============
+// Make io available in routes if needed
+app.set("io", io);
 
-// GET CONVERSATIONS
-app.get("/api/messages/conversations", auth, async (req, res) => {
-  try {
-    const Message = require("./models/Message");
+// ========= SIMPLE ROUTES / DEMO =========
+app.use("/demo", logDemoRoutes);
 
-    const messages = await Message.find({
-      $or: [{ sender: req.user._id }, { recipients: req.user._id }],
-    })
-      .populate("sender", "username displayName avatarUrl")
-      .populate("recipients", "username displayName avatarUrl")
-      .sort({ createdAt: -1 })
-      .lean();
+// ========= NOTIFICATION / TRENDING ROUTES =========
+app.use("/api/notifications", notificationsRouter);
+app.use("/api/trending", trendingRouter);
 
-    const conversationsMap = new Map();
+// ========= HELPERS =========
 
-    messages.forEach((msg) => {
-      const convId = msg.conversationId;
+const cacheHelper = {
+  keys: {
+    search: (q) => `search:users:${q.toLowerCase()}`,
+    userProfile: (id) => `user:profile:${id}`,
+    followers: (id) => `user:followers:${id}`,
+    following: (id) => `user:following:${id}`,
+    feed: (cursor) => `feed:posts:${cursor || "latest"}`,
+    userPosts: (userId, cursor) => `user:posts:${userId}:${cursor || "latest"}`,
+    comments: (postId) => `post:comments:${postId}`,
+    unreadNotifications: (userId) => `notif:unread:${userId}`,
+    followStatus: (followerId, followeeId) =>
+      `follow:${followerId}:${followeeId}`,
+  },
 
-      if (!conversationsMap.has(convId)) {
-        const otherUser =
-          msg.sender._id.toString() === req.user._id.toString()
-            ? msg.recipients[0]
-            : msg.sender;
-
-        conversationsMap.set(convId, {
-          conversationId: convId,
-          otherUser: {
-            id: otherUser._id,
-            username: otherUser.username,
-            displayName: otherUser.displayName || otherUser.username,
-            avatarUrl: otherUser.avatarUrl,
-          },
-          lastMessage: {
-            text: msg.text,
-            createdAt: msg.createdAt,
-            senderId: msg.sender._id,
-            read: msg.readBy.includes(req.user._id),
-          },
-          unreadCount: 0,
-        });
-      }
-    });
-
-    // Count unread messages for each conversation
-    for (const [convId, conv] of conversationsMap) {
-      const unreadCount = await Message.countDocuments({
-        conversationId: convId,
-        sender: { $ne: req.user._id },
-        readBy: { $ne: req.user._id },
-      });
-      conv.unreadCount = unreadCount;
+  invalidateFeedCache: async () => {
+    try {
+      const client = redisHelpers?.client();
+      if (!client) return;
+      const keys = await client.keys("feed:posts:*");
+      if (keys.length) await client.del(...keys);
+    } catch (e) {
+      console.warn("Feed cache invalidation error:", e.message);
     }
+  },
 
-    const conversations = Array.from(conversationsMap.values());
-    res.json(conversations);
-  } catch (error) {
-    console.error("Error getting conversations:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+  invalidateFollowCaches: async (followerId, followeeId) => {
+    try {
+      const client = redisHelpers?.client();
+      if (!client) return;
+      await client.del(
+        `follow:${followerId}:${followeeId}`,
+        `user:followers:${followeeId}`,
+        `user:following:${followerId}`
+      );
+    } catch (e) {
+      console.warn("Follow cache invalidation error:", e.message);
+    }
+  },
 
-// GET MESSAGES FOR A CONVERSATION
-app.get("/api/messages/conversation/:userId", auth, async (req, res) => {
-  try {
-    const Message = require("./models/Message");
-    const otherUserId = req.params.userId;
+  invalidateNotificationCache: async (userId) => {
+    try {
+      const client = redisHelpers?.client();
+      if (!client) return;
+      await client.del(`notif:unread:${userId}`);
+    } catch (e) {
+      console.warn("Notification cache invalidation error:", e.message);
+    }
+  },
+};
 
-    // Create conversation ID
-    const conversationId = [req.user._id.toString(), otherUserId]
-      .sort()
-      .join("_");
+function formatTimestamp(date) {
+  const now = new Date();
+  const diff = Math.floor((now - new Date(date)) / 1000);
+  if (diff < 60) return "Just now";
+  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
+  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
+  return new Date(date).toLocaleDateString();
+}
 
-    // Get all messages in conversation
-    const messages = await Message.find({ conversationId })
-      .populate("sender", "username displayName avatarUrl")
-      .sort({ createdAt: 1 })
-      .lean();
-
-    const formattedMessages = messages.map((msg) => ({
-      id: msg._id,
-      sender: {
-        id: msg.sender._id,
-        username: msg.sender.username,
-        displayName: msg.sender.displayName || msg.sender.username,
-        avatarUrl: msg.sender.avatarUrl,
-      },
-      text: msg.text,
-      createdAt: msg.createdAt,
-      delivered: msg.deliveredTo.length > 0,
-      read: msg.readBy.length > 0,
-      isMine: msg.sender._id.toString() === req.user._id.toString(),
-    }));
-
-    res.json(formattedMessages);
-  } catch (error) {
-    console.error("Error getting messages:", error);
-    res.status(500).json({ message: "Server error" });
-  }
-});
-app.get("/api/messages/unread/count", auth, async (req, res) => {
-  try {
-    const Message = require("./models/Message");
-
-    const count = await Message.countDocuments({
-      recipients: req.user._id,
-      sender: { $ne: req.user._id },
-      readBy: { $ne: req.user._id },
-    });
-
-    console.log(`💬 Unread messages for ${req.user.username}:`, count);
-    res.json({ count });
-  } catch (err) {
-    console.error("Get unread messages count error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+// ======================================================
+// =============== AUTH ROUTES ==========================
+// ======================================================
 
 // SIGNUP
 app.post("/api/auth/signup", async (req, res) => {
   try {
     const { email, username, age, gender, password } = req.body;
 
-    // Check all fields are provided
     if (!email || !username || !age || !gender || !password) {
       return res.status(400).json({ message: "All fields are required" });
     }
 
-    // Validate username starts with a letter
     if (!/^[a-zA-Z]/.test(username)) {
       return res
         .status(400)
         .json({ message: "Username must start with a letter" });
     }
 
-    // Validate username format (letter, then letters/numbers/underscores)
     if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
       return res.status(400).json({
         message: "Username can only contain letters, numbers and underscores",
       });
     }
 
-    // Validate age
-    const ageNum = parseInt(age);
-    if (isNaN(ageNum) || ageNum < 16) {
-      return res
-        .status(400)
-        .json({ message: "You must be at least 16 years old to sign up" });
-    }
-
-    if (ageNum > 120) {
+    const ageNum = parseInt(age, 10);
+    if (isNaN(ageNum) || ageNum < 16 || ageNum > 120) {
       return res.status(400).json({ message: "Please enter a valid age" });
     }
 
-    // Validate gender
     const validGenders = ["male", "female", "other", "prefer-not-to-say"];
     if (!validGenders.includes(gender)) {
       return res.status(400).json({ message: "Invalid gender selection" });
     }
 
-    // Validate password - no special characters
     if (/[!@#$%^&*(),.?":{}|<>]/.test(password)) {
       return res
         .status(400)
         .json({ message: "Password cannot contain special characters" });
     }
-
-    // Check password length
     if (password.length < 6) {
       return res
         .status(400)
         .json({ message: "Password must be at least 6 characters" });
     }
 
-    // Check if email already exists
     if (await User.findOne({ email })) {
       return res.status(400).json({ message: "Email already registered" });
     }
-
-    // Check if username already exists
     if (await User.findOne({ username })) {
       return res.status(400).json({ message: "Username taken" });
     }
 
-    // Hash password
     const hashed = await bcrypt.hash(password, 10);
 
-    // Create new user
     const newUser = await User.create({
       email,
       username,
@@ -657,34 +401,33 @@ app.post("/api/auth/signup", async (req, res) => {
       followersCount: 0,
       followingCount: 0,
     });
-    logplease(req, "SIGNUP", "New user signed up", {
+
+    await logplease(req, "SIGNUP", "New user signed up", {
       userId: newUser._id,
       username: newUser.username,
     });
 
-    // Ensure JWT secret exists
     if (!process.env.JWT_SECRET) {
-      console.error("JWT_SECRET not set");
+      console.error("JWT_SECRET missing");
       return res.status(500).json({ message: "Server configuration error" });
     }
 
-    // Sign token with multiple common id claims so middleware accepts it
-    const userIdStr = newUser._id.toString();
+    const idStr = newUser._id.toString();
     const token = jwt.sign(
       {
-        userId: userIdStr,
-        id: userIdStr,
-        _id: userIdStr,
-        sub: userIdStr,
+        userId: idStr,
+        id: idStr,
+        _id: idStr,
+        sub: idStr,
         username: newUser.username,
       },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
-    return res.status(201).json({
+    res.status(201).json({
       id: newUser._id,
-      userId: userIdStr,
+      userId: idStr,
       email: newUser.email,
       username: newUser.username,
       age: newUser.age,
@@ -693,35 +436,25 @@ app.post("/api/auth/signup", async (req, res) => {
     });
   } catch (err) {
     console.error("Signup error:", err);
-    return res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
   try {
-    console.log("===== LOGIN ATTEMPT =====");
-    console.log("Username received:", req.body.username);
-
     const { username, password } = req.body;
-
     const user = await User.findOne({ username });
-    console.log("User found in DB:", !!user);
 
     if (!user) {
-      console.log("❌ No user found");
       return res.status(404).json({ message: "Account not found" });
     }
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    console.log("Password correct:", ok);
-
     if (!ok) {
-      console.log("❌ Wrong password");
       return res.status(401).json({ message: "Incorrect password" });
     }
 
-    // Generate JWT
     const tokenPayload = {
       sub: user._id.toString(),
       username: user.username,
@@ -733,29 +466,20 @@ app.post("/api/auth/login", async (req, res) => {
 
     const device = req.headers["user-agent"];
     const ip = req.ip || req.connection.remoteAddress;
-    logplease(req, "LOGIN", "User logged in", {
+    await logplease(req, "LOGIN", "User logged in", {
       userId: user._id,
       username: user.username,
       device,
       ip,
     });
 
-    // ✅ CHECK IF ADMIN
     const adminUsernames =
       process.env.ADMIN_USERNAMES?.split(",").map((u) => u.trim()) || [];
     const isAdmin = adminUsernames.includes(username);
-    console.log("🔐 Admin check:", { username, adminUsernames, isAdmin });
 
-    console.log("===== TOKEN GENERATED =====");
-    console.log("User ID (sub):", tokenPayload.sub);
-    console.log("Username:", tokenPayload.username);
-    console.log("Is Admin:", isAdmin);
-    console.log("JWT Token:", token);
-    console.log("===========================\n");
-
-    return res.json({
+    res.json({
       token,
-      isAdmin, // ✅ ADD THIS
+      isAdmin,
       user: {
         id: user._id,
         username: user.username,
@@ -766,12 +490,12 @@ app.post("/api/auth/login", async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("❌ Login error:", err);
+    console.error("Login error:", err);
     res.status(500).json({ message: "Server error", detail: err.message });
   }
 });
 
-//route to check the jwt
+// DEBUG route to generate JWT quickly
 app.get("/debug/jwt", (req, res) => {
   const token = jwt.sign(
     { sub: "USER_ID_HERE", username: "USERNAME_HERE" },
@@ -781,9 +505,25 @@ app.get("/debug/jwt", (req, res) => {
   res.json({ token });
 });
 
-// ============== USER ROUTES ==============
+// LOGOUT
+app.post("/api/auth/logout", auth, async (req, res) => {
+  try {
+    await logplease(req, "LOGOUT", "User logged out", {
+      userId: req.user._id,
+      username: req.user.username,
+    });
+    res.json({ message: "Logged out successfully" });
+  } catch (err) {
+    console.error("Logout error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
 
-// GET current user
+// ======================================================
+// =============== USER / FOLLOW ROUTES =================
+// ======================================================
+
+// Current user
 app.get("/api/users/me", auth, async (req, res) => {
   try {
     const user = await User.findById(req.user._id).select("-passwordHash");
@@ -801,33 +541,24 @@ app.get("/api/users/me", auth, async (req, res) => {
       followingCount: user.followingCount || 0,
     });
   } catch (err) {
-    console.error("Get user error:", err);
+    console.error("Get me error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// SEARCH USERS
-// SEARCH USERS
-app.get("/api/users/search", auth, async (req, res) => {
+// ---- SEARCH USERS (new frontend expects /search-users) ----
+app.get("/search-users", auth, async (req, res) => {
   try {
     const { q } = req.query;
-
-    if (!q || q.trim() === "") {
-      return res.json([]);
+    if (!q || !q.trim()) {
+      return res.json({ results: [] });
     }
 
-    const cacheKey = cacheHelper.keys.search(q); // ✅ add this line
+    const cacheKey = cacheHelper.keys.search(q);
 
-    await logplease(req, "USER_SEARCH", "User performed a search", {
-      query: q,
-      userId: req.user._id,
-    });
-
-    // Try to get from cache
     const cached = await redisHelpers.getJSON(cacheKey);
     if (cached) {
-      console.log("✅ Search cache hit for:", q);
-      return res.json(cached);
+      return res.json({ results: cached });
     }
 
     const users = await User.find({
@@ -842,56 +573,142 @@ app.get("/api/users/search", auth, async (req, res) => {
       id: u._id,
       username: u.username,
       displayName: u.displayName || u.username,
-      avatarUrl: u.avatarUrl,
+      avatarUrl: u.avatarUrl || null,
       followersCount: u.followersCount || 0,
     }));
 
-    // Cache for 10 minutes
     await redisHelpers.setJSON(cacheKey, result, { ex: 600 });
 
-    res.json(result);
+    res.json({ results: result });
   } catch (err) {
-    console.error("Search users error:", err);
+    console.error("search-users error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// FOLLOW USER - FIXED
-// REPLACE THE FOLLOW ROUTES IN YOUR server.js WITH THESE FIXED VERSIONS
+// Followers list
+app.get("/api/users/:id/followers", async (req, res) => {
+  try {
+    const userId = req.params.id;
 
-// ============== FOLLOW/UNFOLLOW ROUTES - FIXED ==============
+    const followDocs = await Follow.find({ followee: userId }).populate(
+      "follower",
+      "username name avatarUrl"
+    );
 
-// FOLLOW USER - FIXED WITH PROPER ERROR HANDLING
-// ===== Follow / Unfollow / Check routes (clean, single copy) =====
+    if (!followDocs.length) return res.json([]);
 
+    const ids = followDocs
+      .map((f) => f.follower && f.follower._id)
+      .filter(Boolean)
+      .map((id) => id.toString());
+
+    const counts = await Follow.aggregate([
+      {
+        $match: {
+          followee: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        },
+      },
+      { $group: { _id: "$followee", count: { $sum: 1 } } },
+    ]);
+
+    const map = counts.reduce((m, c) => {
+      m[c._id.toString()] = c.count;
+      return m;
+    }, {});
+
+    const followers = followDocs.map((f) => {
+      const u = f.follower;
+      return {
+        id: u._id,
+        username: u.username,
+        name: u.name,
+        avatarUrl: u.avatarUrl || null,
+        followerCount: map[u._id.toString()] || 0,
+      };
+    });
+
+    res.json(followers);
+  } catch (err) {
+    console.error("/api/users/:id/followers error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Following list
+app.get("/api/users/:id/following-list", async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    const followDocs = await Follow.find({ follower: userId }).populate(
+      "followee",
+      "username name avatarUrl"
+    );
+
+    if (!followDocs.length) return res.json([]);
+
+    const ids = followDocs
+      .map((f) => f.followee && f.followee._id)
+      .filter(Boolean)
+      .map((id) => id.toString());
+
+    const counts = await Follow.aggregate([
+      {
+        $match: {
+          followee: { $in: ids.map((id) => new Types.ObjectId(id)) },
+        },
+      },
+      { $group: { _id: "$followee", count: { $sum: 1 } } },
+    ]);
+
+    const map = counts.reduce((m, c) => {
+      m[c._id.toString()] = c.count;
+      return m;
+    }, {});
+
+    const following = followDocs.map((f) => {
+      const u = f.followee;
+      return {
+        id: u._id,
+        username: u.username,
+        name: u.name,
+        avatarUrl: u.avatarUrl || null,
+        followerCount: map[u._id.toString()] || 0,
+      };
+    });
+
+    res.json(following);
+  } catch (err) {
+    console.error("/api/users/:id/following-list error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
+// Follow / Unfollow / Check (same logic as before, just cleaned)
 app.post("/api/users/:userId/follow", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
-    const me = req.user && req.user._id && req.user._id.toString();
+    const me = req.user._id.toString();
 
-    console.log("Follow request:", { by: me, target: targetUserId });
-
-    // validate IDs
-    if (!targetUserId || !ObjectId.isValid(targetUserId)) {
+    if (!ObjectId.isValid(targetUserId)) {
       return res.status(400).json({ message: "Invalid target user id" });
     }
-    if (!me) return res.status(401).json({ message: "Unauthorized" });
-    if (me === targetUserId)
+    if (me === targetUserId) {
       return res.status(400).json({ message: "Cannot follow yourself" });
+    }
 
-    // check target exists
     const targetUser = await User.findById(targetUserId);
-    if (!targetUser) return res.status(404).json({ message: "User not found" });
+    if (!targetUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-    // Try to create follow (unique index on (follower, followee) should exist)
     try {
-      const newFollow = await Follow.create({
+      const followDoc = await Follow.create({
         follower: req.user._id,
         followee: targetUserId,
         status: "accepted",
       });
 
-      // increment counts only after creation
       await User.findByIdAndUpdate(targetUserId, {
         $inc: { followersCount: 1 },
       });
@@ -899,20 +716,9 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
         $inc: { followingCount: 1 },
       });
 
-      // ✅ LOG USER FOLLOWS
-      logplease(req, "USER_FOLLOWS", "User followed another user", {
-        by: me,
-        target: targetUserId,
-      });
-
-      // ✅ LOG SOMEONE FOLLOWS YOU (for target user)
-
-      // Invalidate follow-related caches
       await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
-      // best-effort notification
       try {
-        const Notification = require("./models/Notification");
         await Notification.create({
           user: targetUserId,
           actor: req.user._id,
@@ -922,44 +728,34 @@ app.post("/api/users/:userId/follow", auth, async (req, res) => {
           read: false,
         });
       } catch (nerr) {
-        console.error(
-          "Notification creation failed (ignored):",
-          nerr && nerr.message
-        );
+        console.warn("Follow notification failed:", nerr.message);
       }
 
-      return res.json({
+      res.json({
         message: "Followed successfully",
         following: true,
-        followId: newFollow._id,
+        followId: followDoc._id,
       });
-    } catch (createErr) {
-      // duplicate follow (unique index) -> user-friendly response
-      if (createErr && createErr.code === 11000) {
+    } catch (err) {
+      if (err.code === 11000) {
         return res.status(400).json({ message: "Already following this user" });
       }
-      console.error("Follow create error:", createErr);
-      return res
-        .status(500)
-        .json({ message: "Server error", error: createErr.message });
+      throw err;
     }
   } catch (err) {
-    console.error("Follow user error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("Follow error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 app.delete("/api/users/:userId/follow", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
-    const me = req.user && req.user._id && req.user._id.toString();
+    const me = req.user._id.toString();
 
-    console.log("Unfollow request:", { by: me, target: targetUserId });
-
-    if (!targetUserId || !ObjectId.isValid(targetUserId)) {
+    if (!ObjectId.isValid(targetUserId)) {
       return res.status(400).json({ message: "Invalid target user id" });
     }
-    if (!me) return res.status(401).json({ message: "Unauthorized" });
 
     const deleted = await Follow.findOneAndDelete({
       follower: req.user._id,
@@ -970,7 +766,6 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
       return res.status(400).json({ message: "Not following this user" });
     }
 
-    // decrement counts (note: could add clamping later)
     await User.findByIdAndUpdate(targetUserId, {
       $inc: { followersCount: -1 },
     });
@@ -978,27 +773,21 @@ app.delete("/api/users/:userId/follow", auth, async (req, res) => {
       $inc: { followingCount: -1 },
     });
 
-    // ✅ LOG UNFOLLOW (using USER_FOLLOWS event with metadata)
-    logplease(req, "USER_UNFOLLOWS", "User unfollowed another user", {
-      by: me,
-      target: targetUserId,
-    });
-
-    // Invalidate follow-related caches
     await cacheHelper.invalidateFollowCaches(me, targetUserId);
 
-    return res.json({ message: "Unfollowed successfully", following: false });
+    res.json({ message: "Unfollowed successfully", following: false });
   } catch (err) {
-    console.error("Unfollow user error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("Unfollow error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
 app.get("/api/users/:userId/following", auth, async (req, res) => {
   try {
     const targetUserId = req.params.userId;
-    if (!targetUserId || !ObjectId.isValid(targetUserId))
+    if (!ObjectId.isValid(targetUserId)) {
       return res.json({ following: false });
+    }
 
     const follow = await Follow.findOne({
       follower: req.user._id,
@@ -1008,30 +797,26 @@ app.get("/api/users/:userId/following", auth, async (req, res) => {
     res.json({ following: !!follow });
   } catch (err) {
     console.error("Check following error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// UPDATE PROFILE - FIXED
+// Update profile
 app.put("/api/users/me", auth, async (req, res) => {
   try {
     const allowed = ["bio", "avatarUrl", "displayName", "username"];
     const updates = {};
 
     allowed.forEach((key) => {
-      if (req.body[key] !== undefined) {
-        updates[key] = req.body[key];
-      }
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
     });
 
-    // Check if username is being changed and if it's already taken
     if (updates.username && updates.username !== req.user.username) {
-      const existingUser = await User.findOne({
+      const existing = await User.findOne({
         username: updates.username,
         _id: { $ne: req.user._id },
       });
-
-      if (existingUser) {
+      if (existing) {
         return res.status(400).json({ message: "Username already taken" });
       }
     }
@@ -1042,17 +827,6 @@ app.put("/api/users/me", auth, async (req, res) => {
     }).select("-passwordHash");
 
     if (!updated) return res.status(404).json({ message: "User not found" });
-    logplease(req, "PROFILE_UPDATED", "User updated their profile", {
-      userId: req.user._id,
-      username: req.user.username,
-      updates,
-    });
-    if (updates.avatarUrl) {
-      logplease(req, "AVATAR_UPDATED", "User updated their avatar", {
-        userId: req.user._id,
-        username: req.user.username,
-      });
-    }
 
     res.json({
       id: updated._id,
@@ -1067,24 +841,19 @@ app.put("/api/users/me", auth, async (req, res) => {
     });
   } catch (err) {
     console.error("Update profile error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// ============== MEDIA ROUTES ==============
+// ======================================================
+// =============== MEDIA ROUTES =========================
+// ======================================================
 
-// GET ALL MEDIA FOR CURRENT USER
 app.get("/api/media/all", auth, async (req, res) => {
   try {
-    const Media = require("./models/Media");
-
-    console.log("📥 Fetching media for user:", req.user._id);
-
     const mediaList = await Media.find({ ownerId: req.user._id })
       .sort({ createdAt: -1 })
       .lean();
-
-    console.log("✅ Found media count:", mediaList.length);
     res.json(mediaList);
   } catch (err) {
     console.error("Get media error:", err);
@@ -1092,12 +861,9 @@ app.get("/api/media/all", auth, async (req, res) => {
   }
 });
 
-// UPLOAD MEDIA (Direct save)
 app.post("/api/media/upload", auth, async (req, res) => {
   try {
-    const Media = require("./models/Media");
     const { url, mimeType, storageKey } = req.body;
-
     if (!url || !storageKey) {
       return res.status(400).json({ message: "URL and storageKey required" });
     }
@@ -1105,18 +871,12 @@ app.post("/api/media/upload", auth, async (req, res) => {
     const newMedia = await Media.create({
       ownerType: "User",
       ownerId: req.user._id,
-      url: url,
-      storageKey: storageKey,
+      url,
+      storageKey,
       mimeType: mimeType || "application/octet-stream",
       processed: true,
     });
-    logplease(req, "MEDIA_UPLOADED", "User uploaded new media", {
-      userId: req.user._id,
-      username: req.user.username,
-      mediaId: newMedia._id,
-    });
 
-    console.log("✅ Media uploaded:", newMedia._id);
     res.status(201).json(newMedia);
   } catch (err) {
     console.error("Upload media error:", err);
@@ -1124,30 +884,19 @@ app.post("/api/media/upload", auth, async (req, res) => {
   }
 });
 
-// DELETE MEDIA
 app.delete("/api/media/:mediaId", auth, async (req, res) => {
   try {
-    const Media = require("./models/Media");
-
     const media = await Media.findById(req.params.mediaId);
     if (!media) {
       return res.status(404).json({ message: "Media not found" });
     }
-
-    // Check if user owns this media
     if (media.ownerId.toString() !== req.user._id.toString()) {
       return res
         .status(403)
         .json({ message: "Not authorized to delete this media" });
     }
-    logplease("MEDIA_DELETED", "User deleted media", {
-      userId: req.user._id,
-      username: req.user.username,
-      mediaId: req.params.mediaId,
-    });
-    await Media.findByIdAndDelete(req.params.mediaId);
 
-    console.log("✅ Media deleted:", req.params.mediaId);
+    await Media.findByIdAndDelete(req.params.mediaId);
     res.json({ message: "Media deleted successfully" });
   } catch (err) {
     console.error("Delete media error:", err);
@@ -1155,25 +904,20 @@ app.delete("/api/media/:mediaId", auth, async (req, res) => {
   }
 });
 
-// ============== POST ROUTES ==============
+// ======================================================
+// =============== POST / FEED ROUTES ===================
+// ======================================================
 
-// CREATE POST
+// Create post
 app.post("/api/posts", auth, async (req, res) => {
   try {
-    console.log("🔧 POST /api/posts route HIT by user:", req.user.username);
     const { content, type, mediaUrl } = req.body;
-    console.log(
-      "  Content:",
-      content ? content.substring(0, 20) + "..." : "EMPTY"
-    );
-
-    if (!content || content.trim() === "") {
+    if (!content || !content.trim()) {
       return res.status(400).json({ message: "Content is required" });
     }
 
     const user = await User.findById(req.user._id);
 
-    console.log("  Creating post in MongoDB...");
     const newPost = await Post.create({
       userId: req.user._id,
       username: req.user.username,
@@ -1184,22 +928,6 @@ app.post("/api/posts", auth, async (req, res) => {
       comments: [],
     });
 
-    console.log(
-      "📝 POST_CREATED: About to log post creation for user:",
-      req.user.username
-    );
-    logplease(req, "POST_CREATED", "User created a new post", {
-      postId: newPost._id,
-      userId: req.user._id,
-      username: req.user.username,
-      hasMedia: !!mediaUrl,
-    });
-    console.log(
-      "📝 POST_CREATED: Logger call completed for post:",
-      newPost._id.toString()
-    );
-
-    // ✅ QUEUE MEDIA PROCESSING JOB IF MEDIA EXISTS
     if (mediaUrl) {
       try {
         await mediaQueue.add("process-media", {
@@ -1208,36 +936,19 @@ app.post("/api/posts", auth, async (req, res) => {
           filePath: mediaUrl,
           type: type || "text",
         });
-        logplease(
-          req,
-          "MEDIA_PROCESSING_QUEUED",
-          "Media processing job queued for post",
-          {
-            postId: newPost._id,
-            userId: req.user._id,
-            username: req.user.username,
-          }
-        );
-        console.log("✅ Media processing job queued for post:", newPost._id);
-      } catch (queueErr) {
-        console.error("❌ Failed to queue media job:", queueErr);
-        // Don't fail the post creation if queuing fails
+      } catch (err) {
+        console.warn("Failed to queue media job:", err.message);
       }
     }
 
-    // Invalidate feed cache when new post is created
     await cacheHelper.invalidateFeedCache();
 
-    // Also invalidate user's own posts cache
-    if (redisHelpers && redisHelpers.client()) {
-      const userPostsKeys = await redisHelpers
+    if (redisHelpers?.client()) {
+      const keys = await redisHelpers
         .client()
         .keys(`user:posts:${req.user._id}:*`);
-      if (userPostsKeys && userPostsKeys.length > 0) {
-        await redisHelpers.client().del(...userPostsKeys);
-        console.log(
-          `✅ Invalidated ${userPostsKeys.length} user posts cache keys`
-        );
+      if (keys.length) {
+        await redisHelpers.client().del(...keys);
       }
     }
 
@@ -1258,50 +969,44 @@ app.post("/api/posts", auth, async (req, res) => {
   }
 });
 
-// GET FEED
+// Feed
 app.get("/api/posts/feed", auth, async (req, res) => {
   try {
     const { cursor } = req.query;
-    const limit = 10; // Number of posts per page
+    const limit = 10;
 
     const cacheKey = cacheHelper.keys.feed(cursor || "first_page");
-
-    // Try to get from cache
     const cached = await redisHelpers.getJSON(cacheKey);
     if (cached) {
-      console.log(`✅ Feed cache hit for cursor: ${cursor || "first_page"}`);
       return res.json(cached);
     }
 
     const query = {};
     if (cursor) {
-      const parsedCursor = new Date(cursor);
-      if (!isNaN(parsedCursor)) {
-        query.createdAt = { $lt: parsedCursor };
-      }
+      const parsed = new Date(cursor);
+      if (!isNaN(parsed)) query.createdAt = { $lt: parsed };
     }
 
     const posts = await Post.find(query)
       .sort({ createdAt: -1 })
       .limit(limit)
-      .populate("userId", "username displayName avatarUrl") // Use populate
+      .populate("userId", "username displayName avatarUrl")
       .lean();
 
-    // Example for GET /api/posts/feed
-    const formattedPosts = posts.map((post) => {
-      const postUser = post.userId || {};
+    const formatted = posts.map((post) => {
+      const u = post.userId || {};
       return {
         id: post._id,
-        username: postUser.username || post.username,
-        displayName: postUser.displayName || postUser.username,
-        avatar: postUser.avatarUrl || "👤",
+        username: u.username || post.username,
+        displayName: u.displayName || u.username,
+        avatar: u.avatarUrl || "👤",
         content: post.content,
         mediaUrl: post.mediaUrl,
         timestamp: formatTimestamp(post.createdAt),
         createdAt: post.createdAt,
         likes: Array.isArray(post.likes) ? post.likes.length : 0,
-        commentCount: post.commentCount || 0, // ✅ Use commentCount field
-        comments: post.commentCount || 0, // ✅ Also for compatibility
+        commentCount: post.commentCount || 0,
+        comments: post.commentCount || 0,
         liked:
           Array.isArray(post.likes) &&
           post.likes.some((id) => id.toString() === req.user._id.toString()),
@@ -1309,19 +1014,15 @@ app.get("/api/posts/feed", auth, async (req, res) => {
     });
 
     const nextCursor =
-      formattedPosts.length === limit
-        ? formattedPosts[formattedPosts.length - 1].createdAt.toISOString()
+      formatted.length === limit
+        ? formatted[formatted.length - 1].createdAt.toISOString()
         : null;
 
     const response = {
-      posts: formattedPosts.map((p) => {
-        const { createdAt, ...rest } = p; // Omit createdAt from final post object
-        return rest;
-      }),
+      posts: formatted.map(({ createdAt, ...rest }) => rest),
       nextCursor,
     };
 
-    // Cache for 1 minute
     await redisHelpers.setJSON(cacheKey, response, { ex: 300 });
 
     res.json(response);
@@ -1331,50 +1032,31 @@ app.get("/api/posts/feed", auth, async (req, res) => {
   }
 });
 
-// GET USER POSTS (Profile page posts)
+// User posts for profile page
 app.get("/api/users/:userId/posts", auth, async (req, res) => {
   try {
     const { userId } = req.params;
     const { cursor } = req.query;
-    const limit = 12; // Grid display
+    const limit = 12;
 
-    console.log("📥 GET /api/users/:userId/posts called");
-    console.log("   userId:", userId);
-    console.log("   cursor:", cursor);
-    console.log("   auth user:", req.user._id);
-
-    // Validate userId
     if (!ObjectId.isValid(userId)) {
-      console.log("❌ Invalid userId format");
       return res.status(400).json({ message: "Invalid user ID" });
     }
 
     const cacheKey = cacheHelper.keys.userPosts(userId, cursor || "first");
 
-    // Try to get from cache
     try {
-      if (redisHelpers && redisHelpers.getJSON) {
-        const cached = await redisHelpers.getJSON(cacheKey);
-        if (cached) {
-          console.log(`✅ User posts cache hit for userId: ${userId}`);
-          return res.json(cached);
-        }
-      }
-    } catch (cacheErr) {
-      console.warn("⚠️ Cache read error (continuing):", cacheErr.message);
-      // Continue without cache
+      const cached = await redisHelpers.getJSON(cacheKey);
+      if (cached) return res.json(cached);
+    } catch (err) {
+      console.warn("User posts cache read error:", err.message);
     }
 
     const query = { userId: new ObjectId(userId) };
     if (cursor) {
-      const parsedCursor = new Date(cursor);
-      if (!isNaN(parsedCursor)) {
-        query.createdAt = { $lt: parsedCursor };
-      }
+      const parsed = new Date(cursor);
+      if (!isNaN(parsed)) query.createdAt = { $lt: parsed };
     }
-
-    console.log("🔍 Query:", query);
-    console.time("⏱️ Posts query");
 
     const posts = await Post.find(query)
       .sort({ createdAt: -1 })
@@ -1384,107 +1066,62 @@ app.get("/api/users/:userId/posts", auth, async (req, res) => {
       )
       .lean();
 
-    console.timeEnd("⏱️ Posts query");
-    console.log("📦 Posts found:", posts.length);
-
-    const formattedPosts = posts.map((post) => {
-      return {
-        id: post._id,
-        username: post.username,
-        displayName: post.displayName,
-        avatar: post.avatarUrl || "👤",
-        content: post.content,
-        mediaUrl: post.mediaUrl,
-        thumbnail: post.mediaUrl,
-        timestamp: formatTimestamp(post.createdAt),
-        createdAt: post.createdAt,
-        likes: Array.isArray(post.likes) ? post.likes.length : 0,
-        comments: Array.isArray(post.comments) ? post.comments.length : 0,
-        liked:
-          Array.isArray(post.likes) &&
-          post.likes.some((id) => id.toString() === req.user._id.toString()),
-      };
-    });
+    const formatted = posts.map((post) => ({
+      id: post._id,
+      username: post.username,
+      displayName: post.displayName,
+      avatar: post.avatarUrl || "👤",
+      content: post.content,
+      mediaUrl: post.mediaUrl,
+      thumbnail: post.mediaUrl,
+      timestamp: formatTimestamp(post.createdAt),
+      createdAt: post.createdAt,
+      likes: Array.isArray(post.likes) ? post.likes.length : 0,
+      comments: Array.isArray(post.comments) ? post.comments.length : 0,
+      liked:
+        Array.isArray(post.likes) &&
+        post.likes.some((id) => id.toString() === req.user._id.toString()),
+    }));
 
     const nextCursor =
-      formattedPosts.length === limit
-        ? formattedPosts[formattedPosts.length - 1].createdAt.toISOString()
+      formatted.length === limit
+        ? formatted[formatted.length - 1].createdAt.toISOString()
         : null;
 
     const response = {
-      posts: formattedPosts.map((p) => {
-        const { createdAt, ...rest } = p;
-        return rest;
-      }),
+      posts: formatted.map(({ createdAt, ...rest }) => rest),
       nextCursor,
     };
 
-    // Cache for 5 minutes
     try {
-      if (redisHelpers && redisHelpers.setJSON) {
-        await redisHelpers.setJSON(cacheKey, response, { ex: 300 });
-      }
-    } catch (cacheErr) {
-      console.warn("⚠️ Cache write error (continuing):", cacheErr.message);
-      // Continue even if caching fails
+      await redisHelpers.setJSON(cacheKey, response, { ex: 300 });
+    } catch (err) {
+      console.warn("User posts cache write error:", err.message);
     }
 
     res.json(response);
   } catch (err) {
-    console.error("❌ Get user posts error:", err);
-    console.error("Error message:", err.message);
-    console.error("Error stack:", err.stack);
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("Get user posts error:", err);
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// LIKE/UNLIKE POST
+// Like / unlike post
 app.post("/api/posts/:postId/like", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    const likeIndex = post.likes.findIndex(
+    const idx = post.likes.findIndex(
       (id) => id.toString() === req.user._id.toString()
     );
 
-    if (likeIndex > -1) {
-      // Unlike
-      post.likes.splice(likeIndex, 1);
-      logplease(req, "❤️ LIKE_REMOVED", "User unliked a post", {
-        userId: req.user._id,
-        username: req.user.username,
-        postId: post._id,
-      });
-      console.log(
-        "❤️ LIKE_REMOVED: About log unlike for user:",
-        req.user.username
-      );
-
-      console.log(
-        req,
-        "❤️ LIKE_REMOVED: Logger call completed for post:",
-        post._id.toString()
-      );
+    if (idx > -1) {
+      post.likes.splice(idx, 1);
     } else {
-      // Like
       post.likes.push(req.user._id);
 
-      console.log(
-        "❤️ LIKE_ADDED: About to log like for user:",
-        req.user.username
-      );
-      logplease(req, "❤️ LIKE_ADDED", "User liked a post", {
-        userId: req.user._id,
-        username: req.user.username,
-        postId: post._id,
-      });
-      // Create notification if liking someone else's post
       if (post.userId.toString() !== req.user._id.toString()) {
-        const Notification = require("./models/Notification");
         await Notification.create({
           user: post.userId,
           actor: req.user._id,
@@ -1493,19 +1130,16 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
           targetId: post._id,
           read: false,
         });
-        // Invalidate notification cache for post author
         await cacheHelper.invalidateNotificationCache(post.userId);
       }
     }
 
     await post.save();
-
-    // Invalidate feed and comments cache
     await cacheHelper.invalidateFeedCache();
 
     res.json({
       likes: post.likes.length,
-      liked: likeIndex === -1,
+      liked: idx === -1,
     });
   } catch (err) {
     console.error("Like post error:", err);
@@ -1513,84 +1147,56 @@ app.post("/api/posts/:postId/like", auth, async (req, res) => {
   }
 });
 
-// DELETE POST
+// Delete post
 app.delete("/api/posts/:postId", auth, async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    // Check if user owns the post
     if (post.userId.toString() !== req.user._id.toString()) {
       return res
         .status(403)
         .json({ message: "Not authorized to delete this post" });
     }
-    logplease(req, "🗑️ POST_DELETED", "User deleted a post", {
-      userId: req.user._id,
-      username: req.user.username,
-      postId: post._id,
-    });
-    // Delete post
-    await Post.findByIdAndDelete(req.params.postId);
 
-    // Invalidate feed cache
+    await Post.findByIdAndDelete(req.params.postId);
     await cacheHelper.invalidateFeedCache();
 
-    // Invalidate user posts cache
-    await redisHelpers
-      .client()
-      .del(cacheHelper.keys.userPosts(req.user._id.toString(), "first"));
+    if (redisHelpers?.client()) {
+      await redisHelpers
+        .client()
+        .del(cacheHelper.keys.userPosts(req.user._id.toString(), "first"));
+    }
 
     res.json({ message: "Post deleted successfully" });
   } catch (err) {
     console.error("Delete post error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
+    res.status(500).json({ message: "Server error" });
   }
 });
 
-// ============== COMMENT ROUTES ==============
+// ======================================================
+// =============== COMMENTS ROUTES ======================
+// ======================================================
 
-// POST A COMMENT
+// Add comment
 app.post("/api/posts/:postId/comments", auth, async (req, res) => {
   try {
-    const { text, content } = req.body; // Accept both 'text' and 'content'
-    const commentText = text || content;
-    const Comment = require("./models/Comment");
-    const Notification = require("./models/Notification");
-
-    if (!commentText || commentText.trim().length === 0) {
+    const { text, content } = req.body;
+    const commentText = (text || content || "").trim();
+    if (!commentText) {
       return res.status(400).json({ message: "Comment cannot be empty" });
     }
 
     const post = await Post.findById(req.params.postId);
-    if (!post) {
-      return res.status(404).json({ message: "Post not found" });
-    }
+    if (!post) return res.status(404).json({ message: "Post not found" });
 
-    // Create comment with 'text' field (matching Comment schema)
-    const comment = new Comment({
+    const comment = await Comment.create({
       post: req.params.postId,
       author: req.user._id,
-      text: commentText.trim(),
+      text: commentText,
     });
 
-    await comment.save();
-
-    console.log(
-      "💬 COMMENT_ADDED: About to log comment for user:",
-      req.user.username
-    );
-    await logplease(req, "💬 COMMENT_ADDED", "User added a comment", {
-      userId: req.user._id,
-      username: req.user.username,
-      postId: post._id,
-      commentId: comment._id,
-    });
-
-    // ✅ Update post: add comment reference AND increment count
     await Post.updateOne(
       { _id: req.params.postId },
       {
@@ -1599,15 +1205,13 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
       }
     );
 
-    // Invalidate caches
     await cacheHelper.invalidateFeedCache();
-    if (redisHelpers && redisHelpers.client()) {
+    if (redisHelpers?.client()) {
       await redisHelpers
         .client()
         .del(cacheHelper.keys.comments(req.params.postId));
     }
 
-    // Create notification for post author
     if (post.userId.toString() !== req.user._id.toString()) {
       await Notification.create({
         user: post.userId,
@@ -1620,15 +1224,13 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
       await cacheHelper.invalidateNotificationCache(post.userId);
     }
 
-    // Populate author info
     await comment.populate("author", "username displayName avatarUrl");
 
-    // ✅ Return with proper field names
     res.status(201).json({
       _id: comment._id,
-      id: comment._id, // For compatibility
+      id: comment._id,
       text: comment.text,
-      content: comment.text, // For compatibility
+      content: comment.text,
       author: {
         _id: comment.author._id,
         id: comment.author._id,
@@ -1644,31 +1246,23 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
   }
 });
 
-// GET COMMENTS FOR A POST
-// GET COMMENTS FOR A POST
+// Get comments
 app.get("/api/posts/:postId/comments", async (req, res) => {
   try {
     const cacheKey = cacheHelper.keys.comments(req.params.postId);
-
-    // Try cache
     const cached = await redisHelpers.getJSON(cacheKey);
-    if (cached) {
-      console.log("✅ Comments cache hit for post:", req.params.postId);
-      return res.json(cached);
-    }
-
-    const Comment = require("./models/Comment");
+    if (cached) return res.json(cached);
 
     const comments = await Comment.find({ post: req.params.postId })
       .populate("author", "username displayName avatarUrl")
-      .sort({ createdAt: 1 }) // Oldest first for chat-like display
+      .sort({ createdAt: 1 })
       .lean();
 
-    const formattedComments = comments.map((c) => ({
+    const formatted = comments.map((c) => ({
       _id: c._id,
-      id: c._id, // For compatibility
+      id: c._id,
       text: c.text,
-      content: c.text, // For compatibility
+      content: c.text,
       author: {
         _id: c.author._id,
         id: c.author._id,
@@ -1680,42 +1274,28 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
       likesCount: c.likesCount || 0,
     }));
 
-    // Cache for 5 minutes
-    await redisHelpers.setJSON(cacheKey, formattedComments, { ex: 300 });
+    await redisHelpers.setJSON(cacheKey, formatted, { ex: 300 });
 
-    res.json(formattedComments);
+    res.json(formatted);
   } catch (err) {
     console.error("Get comments error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// DELETE A COMMENT
-// DELETE A COMMENT - ALREADY CORRECT IN YOUR CODE
+// Delete comment
 app.delete("/api/comments/:commentId", auth, async (req, res) => {
   try {
-    const Comment = require("./models/Comment");
-
     const comment = await Comment.findById(req.params.commentId);
-    if (!comment) {
-      return res.status(404).json({ message: "Comment not found" });
-    }
+    if (!comment) return res.status(404).json({ message: "Comment not found" });
 
-    // Check authorization
     if (comment.author.toString() !== req.user._id.toString()) {
       const post = await Post.findById(comment.post);
-      if (post.userId.toString() !== req.user._id.toString()) {
+      if (!post || post.userId.toString() !== req.user._id.toString()) {
         return res.status(403).json({ message: "Not authorized" });
       }
     }
 
-    await logplease(req, "🗑️ COMMENT_DELETED", "User deleted a comment", {
-      userId: req.user._id,
-      username: req.user.username,
-      commentId: comment._id,
-    });
-
-    // ✅ Remove comment from post AND decrement count
     await Post.updateOne(
       { _id: comment.post },
       {
@@ -1724,7 +1304,6 @@ app.delete("/api/comments/:commentId", auth, async (req, res) => {
       }
     );
 
-    // Delete comment
     await Comment.findByIdAndDelete(req.params.commentId);
 
     res.json({ message: "Comment deleted", success: true });
@@ -1734,20 +1313,19 @@ app.delete("/api/comments/:commentId", auth, async (req, res) => {
   }
 });
 
-// ============== NOTIFICATION ROUTES ==============
+// ======================================================
+// =============== NOTIFICATION ROUTES ==================
+// ======================================================
 
-// GET NOTIFICATIONS - FIXED
 app.get("/api/notifications", auth, async (req, res) => {
   try {
-    const Notification = require("./models/Notification");
-
     const notifications = await Notification.find({ user: req.user._id })
       .populate("actor", "username displayName avatarUrl")
       .sort({ createdAt: -1 })
       .limit(50)
       .lean();
 
-    const formattedNotifications = notifications.map((n) => ({
+    const formatted = notifications.map((n) => ({
       id: n._id,
       verb: n.verb,
       actor: n.actor
@@ -1762,28 +1340,23 @@ app.get("/api/notifications", auth, async (req, res) => {
       createdAt: n.createdAt,
     }));
 
-    res.json(formattedNotifications);
+    res.json(formatted);
   } catch (err) {
     console.error("Get notifications error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-// MARK NOTIFICATION AS READ - FIXED
 app.put("/api/notifications/:notificationId/read", auth, async (req, res) => {
   try {
-    const Notification = require("./models/Notification");
-
     const notification = await Notification.findOneAndUpdate(
       { _id: req.params.notificationId, user: req.user._id },
       { read: true },
       { new: true }
     );
-
     if (!notification) {
       return res.status(404).json({ message: "Notification not found" });
     }
-
     res.json({ message: "Marked as read", notification });
   } catch (err) {
     console.error("Mark notification read error:", err);
@@ -1791,17 +1364,12 @@ app.put("/api/notifications/:notificationId/read", auth, async (req, res) => {
   }
 });
 
-// GET UNREAD NOTIFICATION COUNT
 app.get("/api/notifications/unread/count", auth, async (req, res) => {
   try {
-    const Notification = require("./models/Notification");
-
     const count = await Notification.countDocuments({
       user: req.user._id,
       read: false,
     });
-
-    console.log(`📊 Unread notifications for ${req.user.username}:`, count);
     res.json({ count });
   } catch (err) {
     console.error("Get unread count error:", err);
@@ -1809,7 +1377,9 @@ app.get("/api/notifications/unread/count", auth, async (req, res) => {
   }
 });
 
-// ============== ANALYTICS ROUTES ==============
+// ======================================================
+// =============== ANALYTICS ROUTES =====================
+// ======================================================
 
 app.get("/api/analytics/:period", auth, async (req, res) => {
   try {
@@ -1844,7 +1414,7 @@ app.get("/api/analytics/:period", auth, async (req, res) => {
     }
 
     const posts = await Post.find({
-      userId: userId,
+      userId,
       createdAt: { $gte: startDate },
     })
       .sort({ createdAt: 1 })
@@ -1858,18 +1428,18 @@ app.get("/api/analytics/:period", auth, async (req, res) => {
 
       let index;
       if (groupBy === "day") {
-        const daysDiff = Math.floor((now - postDate) / (1000 * 60 * 60 * 24));
-        index = 6 - daysDiff;
+        const diffDays = Math.floor((now - postDate) / (1000 * 60 * 60 * 24));
+        index = 6 - diffDays;
       } else if (groupBy === "week") {
-        const weeksDiff = Math.floor(
+        const diffWeeks = Math.floor(
           (now - postDate) / (1000 * 60 * 60 * 24 * 7)
         );
-        index = 3 - weeksDiff;
-      } else if (groupBy === "month") {
-        const monthsDiff =
+        index = 3 - diffWeeks;
+      } else {
+        const diffMonths =
           (now.getFullYear() - postDate.getFullYear()) * 12 +
           (now.getMonth() - postDate.getMonth());
-        index = 5 - monthsDiff;
+        index = 5 - diffMonths;
       }
 
       if (index >= 0 && index < labels.length) {
@@ -1886,35 +1456,30 @@ app.get("/api/analytics/:period", auth, async (req, res) => {
         neutral++;
         return;
       }
-
       const result = sentimentAnalyzer.analyze(post.content);
-
       if (result.score > 0) positive++;
       else if (result.score < 0) negative++;
       else neutral++;
     });
 
-    if (posts.length === 0) {
-      positive = 1;
-      neutral = 1;
-      negative = 1;
+    if (!posts.length) {
+      positive = negative = neutral = 1;
     }
 
-    let topPost = posts.reduce((max, post) => {
-      const postLikes = post.likes ? post.likes.length : 0;
-      const maxLikes = max.likes ? max.likes.length : 0;
-      return postLikes > maxLikes ? post : max;
-    }, posts[0] || null);
+    let topPost =
+      posts.reduce((max, post) => {
+        const likes = post.likes ? post.likes.length : 0;
+        const maxLikes = max.likes ? max.likes.length : 0;
+        return likes > maxLikes ? post : max;
+      }, posts[0]) || {};
 
-    if (!topPost) {
-      topPost = { content: "No posts yet", likes: [] };
-    }
+    if (!topPost.content) topPost = { content: "No posts yet", likes: [] };
 
     const hashtagCounts = {};
     posts.forEach((post) => {
-      const hashtags = (post.content || "").match(/#\w+/g) || [];
-      hashtags.forEach((tag) => {
-        hashtagCounts[tag] = (hashtagCounts[tag] || 0) + 1;
+      const tags = (post.content || "").match(/#\w+/g) || [];
+      tags.forEach((t) => {
+        hashtagCounts[t] = (hashtagCounts[t] || 0) + 1;
       });
     });
 
@@ -1928,126 +1493,30 @@ app.get("/api/analytics/:period", auth, async (req, res) => {
     res.json({
       ok: true,
       data: {
-        labels: labels,
+        labels,
         likes: likesData,
-        sentiment: {
-          positive: positive,
-          negative: negative,
-          neutral: neutral,
-        },
+        sentiment: { positive, negative, neutral },
         topPost: {
           text: topPost.content || "No posts yet",
           likes: topPost.likes ? topPost.likes.length : 0,
         },
-        trendingHashtag: trendingHashtag,
+        trendingHashtag,
       },
     });
   } catch (err) {
-    console.error("GET /api/analytics/:period error:", err);
+    console.error("Analytics error:", err);
     res.status(500).json({ ok: false, error: "Server error" });
   }
 });
 
-// ============== HELPER FUNCTIONS ==============
+// ======================================================
+// =============== TRENDING ROUTE (simple) ==============
+// ======================================================
 
-function formatTimestamp(date) {
-  const now = new Date();
-  const diff = Math.floor((now - new Date(date)) / 1000);
-
-  if (diff < 60) return "Just now";
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`;
-  if (diff < 604800) return `${Math.floor(diff / 86400)}d ago`;
-  return new Date(date).toLocaleDateString();
-}
-
-// ============== START SERVER ==============
-
-// ============== REDIS CACHE HELPER ==============
-const cacheHelper = {
-  // Cache keys
-  keys: {
-    search: (q) => `search:users:${q.toLowerCase()}`,
-    userProfile: (id) => `user:profile:${id}`,
-    followers: (id) => `user:followers:${id}`,
-    following: (id) => `user:following:${id}`,
-    feed: (cursor) => `feed:posts:${cursor || "latest"}`,
-    userPosts: (userId, cursor) => `user:posts:${userId}:${cursor || "latest"}`,
-    comments: (postId) => `post:comments:${postId}`,
-    unreadNotifications: (userId) => `notif:unread:${userId}`,
-    followStatus: (followerId, followeeId) =>
-      `follow:${followerId}:${followeeId}`,
-  },
-
-  // Invalidate related caches
-  invalidateUserCaches: async (userId) => {
-    if (redisHelpers && redisHelpers.client()) {
-      const client = redisHelpers.client();
-      try {
-        const pattern = `*user:${userId}*`;
-        const keys = await client.keys(pattern);
-        if (keys.length > 0) await client.del(keys);
-      } catch (e) {
-        console.warn("Cache invalidation error:", e.message);
-      }
-    }
-  },
-
-  invalidateFeedCache: async () => {
-    if (redisHelpers && redisHelpers.client()) {
-      const client = redisHelpers.client();
-      try {
-        // Delete all feed cache keys regardless of cursor value
-        const keys = await client.keys("feed:posts:*");
-        if (keys && keys.length > 0) {
-          await client.del(...keys);
-          console.log(`✅ Invalidated ${keys.length} feed cache keys`);
-        }
-      } catch (e) {
-        console.warn("Feed cache invalidation error:", e.message);
-      }
-    }
-  },
-
-  invalidateFollowCaches: async (followerId, followeeId) => {
-    if (redisHelpers && redisHelpers.client()) {
-      const client = redisHelpers.client();
-      try {
-        await client.del(
-          `follow:${followerId}:${followeeId}`,
-          `user:followers:${followeeId}`,
-          `user:following:${followerId}`
-        );
-      } catch (e) {
-        console.warn("Follow cache invalidation error:", e.message);
-      }
-    }
-  },
-
-  invalidateNotificationCache: async (userId) => {
-    if (redisHelpers && redisHelpers.client()) {
-      const client = redisHelpers.client();
-      try {
-        await client.del(`notif:unread:${userId}`);
-      } catch (e) {
-        console.warn("Notification cache invalidation error:", e.message);
-      }
-    }
-  },
-};
-
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || "0.0.0.0";
-
-require("./cron/trendingCron");
-
-// ================= TRENDING ROUTE =================
 app.get("/api/trending", async (req, res) => {
   try {
-    const Post = require("./models/Post");
-
     const posts = await Post.find().lean();
-    let hashtagCounts = {};
+    const hashtagCounts = {};
 
     posts.forEach((post) => {
       const tags = (post.content || "").match(/#\w+/g) || [];
@@ -2056,121 +1525,42 @@ app.get("/api/trending", async (req, res) => {
       });
     });
 
-    if (Object.keys(hashtagCounts).length === 0) {
-      return res.json({
-        hashtag: null,
-        posts: [],
-      });
+    if (!Object.keys(hashtagCounts).length) {
+      return res.json({ hashtag: null, posts: [] });
     }
 
-    const topTag = Object.entries(hashtagCounts).sort(
+    const [topTag] = Object.entries(hashtagCounts).sort(
       (a, b) => b[1] - a[1]
-    )[0][0];
+    )[0];
 
     const trendingPosts = posts.filter((p) =>
       (p.content || "").includes(topTag)
     );
 
-    res.json({
-      hashtag: topTag,
-      posts: trendingPosts,
-    });
+    res.json({ hashtag: topTag, posts: trendingPosts });
   } catch (err) {
     console.error("Trending route error:", err);
     res.status(500).json({ message: "Server error" });
   }
 });
 
-server.listen(PORT, HOST, () => {
-  const ip = require("os").networkInterfaces();
-  const addresses = [];
-  for (const name of Object.keys(ip)) {
-    for (const iface of ip[name]) {
-      if (iface.family === "IPv4" && !iface.internal) {
-        addresses.push(iface.address);
-      }
-    }
-  }
-  console.log(`✅ Server + Socket.IO running on port ${PORT}`);
-  console.log(`📍 Access via: http://localhost:${PORT}`);
-  if (addresses.length > 0) {
-    console.log(`📍 Access via IP: http://${addresses[0]}:${PORT}`);
-  }
-});
+// ======================================================
+// =============== ADMIN ROUTES =========================
+// ======================================================
 
-// ============== ADMIN ENDPOINTS FOR LOGS ==============
-
-// Get admin info
 app.get("/api/admin/info", auth, adminAuth, (req, res) => {
   res.json({ username: req.user.username });
 });
 
-// Get logs from Elasticsearch
-/*app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
-  try {
-    const { eventType, username } = req.query;
-    
-    console.log("📋 Fetching logs...");
-    
-    try {
-      // Try to query Elasticsearch
-      const result = await esClient.search({
-        index: 'socialsync-logs-*',
-        body: {
-          query: { match_all: {} },
-          sort: [{ timestamp: { order: 'desc' } }],
-          size: 100
-        }
-      });
-
-      const logs = result.body.hits.hits.map(hit => hit._source);
-      console.log("✅ ES logs found:", logs.length);
-      return res.json({ logs });
-    } catch (esErr) {
-      console.log("⚠️ ES not available, returning mock data");
-      // Return mock data if ES is down
-      return res.json({
-        logs: [
-          {
-            eventType: "LOGIN",
-            username: "admin",
-            description: "User logged in",
-            timestamp: new Date(),
-            priority: "low",
-            metadata: { device: "Chrome", ip: "127.0.0.1" }
-          },
-          {
-            eventType: "POST_CREATED",
-            username: "admin",
-            description: "User created a post",
-            timestamp: new Date(),
-            priority: "low",
-            metadata: { postId: "123" }
-          }
-        ]
-      });
-    }
-  } catch (error) {
-    console.error('Logs error:', error);
-    res.status(500).json({ error: 'Failed to fetch logs' });
-  }
-});*/
-
 app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
   try {
     const { eventType, username } = req.query;
-    console.log("📋 Fetching logs with filters:", { eventType, username });
 
     const must = [];
+    if (eventType) must.push({ match_phrase: { eventType } });
+    if (username) must.push({ match_phrase: { username } });
 
-    if (eventType) {
-      must.push({ match_phrase: { eventType } });
-    }
-    if (username) {
-      must.push({ match_phrase: { username } });
-    }
-
-    const esQuery = must.length > 0 ? { bool: { must } } : { match_all: {} };
+    const esQuery = must.length ? { bool: { must } } : { match_all: {} };
 
     try {
       const result = await esClient.search({
@@ -2182,47 +1572,35 @@ app.get("/api/admin/logs", auth, adminAuth, async (req, res) => {
         },
       });
 
-      // FIX: Handle the response structure properly
-      let logs = [];
-
-      // The response could be result.body.hits.hits OR result.hits.hits
       const hits = result?.body?.hits?.hits || result?.hits?.hits || [];
+      const logs = hits.map((h) => h._source || h);
 
-      logs = hits.map((hit) => hit._source || hit);
-
-      console.log("✅ ES logs found:", logs.length);
-      return res.json({ logs });
-    } catch (esErr) {
-      console.error("❌ Elasticsearch error:", esErr.message);
-      return res.json({
+      res.json({ logs });
+    } catch (err) {
+      console.error("Elasticsearch error:", err.message);
+      res.json({
         logs: [],
         error: "Elasticsearch error",
-        details: esErr.message,
+        details: err.message,
       });
     }
-  } catch (error) {
-    console.error("❌ Logs endpoint error:", error);
+  } catch (err) {
+    console.error("Admin logs error:", err);
     res.status(500).json({ error: "Failed to fetch logs" });
   }
 });
-// Add after the other admin endpoints
+
 app.get("/api/admin/test-log", auth, adminAuth, async (req, res) => {
   try {
-    console.log("🧪 Sending test log...");
-
-    // Wait a second
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
     res.json({
       message:
-        "Test log sent. Check Logstash logs with: docker-compose logs logstash --tail=20",
+        "Test log sent. Check Logstash/Elasticsearch from your infra (docker logs etc.)",
     });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Get statistics
 app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
   try {
     try {
@@ -2232,7 +1610,7 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
           aggs: {
             by_event: {
               terms: {
-                field: "eventType.keyword", // Use .keyword for exact match
+                field: "eventType.keyword",
                 size: 20,
               },
             },
@@ -2248,29 +1626,25 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
 
       const totalUsers = await User.countDocuments();
       const totalPosts = await Post.countDocuments();
+      const aggs = result?.body?.aggregations || result?.aggregations || {};
 
-      // Handle response structure
-      const aggregations =
-        result?.body?.aggregations || result?.aggregations || {};
-
-      return res.json({
-        totalLogins: aggregations.logins?.doc_count || 0,
+      res.json({
+        totalLogins: aggs.logins?.doc_count || 0,
         totalUsers,
         totalPosts,
         postsToday: 0,
         totalEngagement: 0,
         highPriorityEvents: 0,
-        topEvents: (aggregations.by_event?.buckets || []).map((b) => ({
+        topEvents: (aggs.by_event?.buckets || []).map((b) => ({
           eventType: b.key,
           count: b.doc_count,
         })),
       });
-    } catch (esErr) {
-      console.error("⚠️ ES error in stats:", esErr.message);
+    } catch (err) {
+      console.error("ES stats error:", err.message);
       const totalUsers = await User.countDocuments();
       const totalPosts = await Post.countDocuments();
-
-      return res.json({
+      res.json({
         totalLogins: 0,
         totalUsers,
         totalPosts,
@@ -2280,84 +1654,257 @@ app.get("/api/admin/stats", auth, adminAuth, async (req, res) => {
         topEvents: [],
       });
     }
-  } catch (error) {
-    console.error("Stats error:", error);
+  } catch (err) {
+    console.error("Admin stats error:", err);
     res.status(500).json({ error: "Failed to fetch stats" });
   }
 });
 
-// Get users
 app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
   try {
-    console.log("📊 Fetching all users for admin panel...");
-
-    // ✅ FIX: Sort by createdAt descending (newest first) and remove/increase limit
     const users = await User.find()
       .select("username displayName followersCount followingCount createdAt")
-      .sort({ createdAt: -1 }) // ✅ Newest users first
-      .limit(100) // ✅ Increased from 20 to 100
+      .sort({ createdAt: -1 })
+      .limit(100)
       .lean();
 
-    console.log(`✅ Found ${users.length} users`);
-
     const usersWithPosts = await Promise.all(
-      users.map(async (user) => {
-        const postsCount = await Post.countDocuments({ userId: user._id });
+      users.map(async (u) => {
+        const postsCount = await Post.countDocuments({ userId: u._id });
         return {
-          _id: user._id,
-          username: user.username,
-          displayName: user.displayName || user.username,
-          followersCount: user.followersCount || 0,
-          followingCount: user.followingCount || 0,
+          _id: u._id,
+          username: u.username,
+          displayName: u.displayName || u.username,
+          followersCount: u.followersCount || 0,
+          followingCount: u.followingCount || 0,
           postsCount,
-          createdAt: user.createdAt, // Include for debugging
+          createdAt: u.createdAt,
         };
       })
     );
 
-    console.log("📤 Sending users to admin panel:", usersWithPosts.length);
     res.json({ users: usersWithPosts });
-  } catch (error) {
-    console.error("❌ Admin users endpoint error:", error);
+  } catch (err) {
+    console.error("Admin users error:", err);
     res
       .status(500)
-      .json({ error: "Failed to fetch users", details: error.message });
+      .json({ error: "Failed to fetch users", details: err.message });
   }
 });
 
-// Get active users
-/*app.get("/api/admin/users", auth, adminAuth, async (req, res) => {
+// ======================================================
+// =============== MESSAGES REST (for new frontend) =====
+// ======================================================
+
+// Total unread count (badge)
+app.get("/api/messages/unread/count", auth, async (req, res) => {
   try {
-    const users = await User.find()
-      .select("username displayName followersCount followingCount")
-      .limit(20);
-    
-    const usersWithPosts = await Promise.all(users.map(async (user) => {
-      const postsCount = await Post.countDocuments({ userId: user._id });
-      return {
-        ...user.toObject(),
-        postsCount
-      };
+    const count = await Message.countDocuments({
+      recipients: req.user._id,
+      sender: { $ne: req.user._id },
+      readBy: { $ne: req.user._id },
+    });
+    res.json({ count });
+  } catch (err) {
+    console.error("Unread messages count error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ---- NEW: /conversations (used by frontend messages.js) ----
+app.get("/conversations", auth, async (req, res) => {
+  try {
+    const messages = await Message.find({
+      $or: [{ sender: req.user._id }, { recipients: req.user._id }],
+    })
+      .populate("sender", "username displayName avatarUrl")
+      .populate("recipients", "username displayName avatarUrl")
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const map = new Map();
+
+    for (const msg of messages) {
+      const convId = msg.conversationId;
+      if (!convId) continue;
+
+      if (!map.has(convId)) {
+        const isMine = msg.sender._id.toString() === req.user._id.toString();
+        const otherUser = isMine ? msg.recipients[0] : msg.sender;
+
+        map.set(convId, {
+          conversationId: convId,
+          with: {
+            id: otherUser._id,
+            username: otherUser.username,
+            displayName: otherUser.displayName || otherUser.username,
+            avatarUrl: otherUser.avatarUrl || null,
+          },
+          lastMessage: {
+            text: msg.text,
+            createdAt: msg.createdAt,
+            senderId: msg.sender._id,
+          },
+          unreadCount: 0,
+        });
+      }
+    }
+
+    // unread counts per conversation
+    for (const [convId, conv] of map) {
+      const unread = await Message.countDocuments({
+        conversationId: convId,
+        sender: { $ne: req.user._id },
+        readBy: { $ne: req.user._id },
+      });
+      conv.unreadCount = unread;
+    }
+
+    const conversations = Array.from(map.values());
+    res.json({ conversations });
+  } catch (err) {
+    console.error("/conversations error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ---- NEW: /conversations/user/:username ----
+app.get("/conversations/user/:username", auth, async (req, res) => {
+  try {
+    const username = req.params.username;
+    const otherUser = await User.findOne({ username });
+    if (!otherUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const otherId = otherUser._id.toString();
+    const myId = req.user._id.toString();
+    const conversationId = [myId, otherId].sort().join("_");
+
+    const messages = await Message.find({ conversationId })
+      .populate("sender", "username displayName avatarUrl")
+      .sort({ createdAt: 1 })
+      .lean();
+
+    const formatted = messages.map((m) => ({
+      _id: m._id,
+      id: m._id,
+      sender: {
+        id: m.sender._id,
+        username: m.sender.username,
+        displayName: m.sender.displayName || m.sender.username,
+        avatarUrl: m.sender.avatarUrl || null,
+      },
+      text: m.text,
+      createdAt: m.createdAt,
     }));
 
-    res.json({ users: usersWithPosts });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch users" });
-  }
-});*/
+    // mark messages as read for me
+    await Message.updateMany(
+      {
+        conversationId,
+        sender: otherId,
+        readBy: { $ne: myId },
+      },
+      { $addToSet: { readBy: myId } }
+    );
 
-//logout route
-// LOGOUT
-app.post("/api/auth/logout", auth, async (req, res) => {
+    res.json({
+      with: {
+        id: otherUser._id,
+        username: otherUser.username,
+        displayName: otherUser.displayName || otherUser.username,
+        avatarUrl: otherUser.avatarUrl || null,
+      },
+      messages: formatted,
+    });
+  } catch (err) {
+    console.error("/conversations/user/:username error:", err);
+    res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ---- NEW: POST /conversations/user/:username/messages ----
+app.post("/conversations/user/:username/messages", auth, async (req, res) => {
   try {
-    await logplease(req, "LOGOUT", "User logged out", {
-      userId: req.user._id,
-      username: req.user.username,
+    const username = req.params.username;
+    const { text } = req.body;
+    const trimmed = (text || "").trim();
+    if (!trimmed) {
+      return res.status(400).json({ message: "Text is required" });
+    }
+
+    const toUser = await User.findOne({ username });
+    if (!toUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    const fromId = req.user._id.toString();
+    const toId = toUser._id.toString();
+    const conversationId = [fromId, toId].sort().join("_");
+
+    const newMessage = await Message.create({
+      conversationId,
+      sender: fromId,
+      recipients: [toId],
+      text: trimmed,
+      deliveredTo: [],
+      readBy: [],
     });
 
-    res.json({ message: "Logged out successfully" });
+    const populated = await Message.findById(newMessage._id)
+      .populate("sender", "username displayName avatarUrl")
+      .lean();
+
+    const payload = {
+      id: populated._id,
+      conversationId,
+      sender: {
+        id: populated.sender._id,
+        username: populated.sender.username,
+        displayName: populated.sender.displayName || populated.sender.username,
+        avatarUrl: populated.sender.avatarUrl || null,
+      },
+      text: populated.text,
+      createdAt: populated.createdAt,
+      delivered: false,
+      read: false,
+    };
+
+    // emit via socket if receiver is online
+    const receiverSocketId = connectedUsers.get(toId);
+    if (receiverSocketId) {
+      io.to(receiverSocketId).emit("new_message", payload);
+    }
+
+    res.status(201).json(payload);
   } catch (err) {
-    console.error("Logout error:", err);
+    console.error("POST /conversations/user/:username/messages error:", err);
     res.status(500).json({ message: "Server error" });
+  }
+});
+
+// ======================================================
+// =============== SERVER START =========================
+// ======================================================
+
+const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || "0.0.0.0";
+
+server.listen(PORT, HOST, () => {
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+  for (const name of Object.keys(interfaces)) {
+    for (const iface of interfaces[name]) {
+      if (iface.family === "IPv4" && !iface.internal) {
+        addresses.push(iface.address);
+      }
+    }
+  }
+
+  console.log(`✅ Server + Socket.IO running on port ${PORT}`);
+  console.log(`📍 Local:  http://localhost:${PORT}`);
+  if (addresses.length) {
+    console.log(`📍 LAN:    http://${addresses[0]}:${PORT}`);
   }
 });
