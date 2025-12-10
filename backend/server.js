@@ -1711,183 +1711,183 @@ app.get("/api/messages/unread/count", auth, async (req, res) => {
   }
 });
 
-// ---- NEW: /conversations (used by frontend messages.js) ----
-app.get("api/conversations", auth, async (req, res) => {
-  try {
-    const messages = await Message.find({
-      $or: [{ sender: req.user._id }, { recipients: req.user._id }],
-    })
-      .populate("sender", "username displayName avatarUrl")
-      .populate("recipients", "username displayName avatarUrl")
-      .sort({ createdAt: -1 })
-      .lean();
+// // ---- NEW: /conversations (used by frontend messages.js) ----
+// app.get("api/conversations", auth, async (req, res) => {
+//   try {
+//     const messages = await Message.find({
+//       $or: [{ sender: req.user._id }, { recipients: req.user._id }],
+//     })
+//       .populate("sender", "username displayName avatarUrl")
+//       .populate("recipients", "username displayName avatarUrl")
+//       .sort({ createdAt: -1 })
+//       .lean();
 
-    const map = new Map();
+//     const map = new Map();
 
-    for (const msg of messages) {
-      const convId = msg.conversationId;
-      if (!convId) continue;
+//     for (const msg of messages) {
+//       const convId = msg.conversationId;
+//       if (!convId) continue;
 
-      if (!map.has(convId)) {
-        const isMine = msg.sender._id.toString() === req.user._id.toString();
-        const otherUser = isMine ? msg.recipients[0] : msg.sender;
+//       if (!map.has(convId)) {
+//         const isMine = msg.sender._id.toString() === req.user._id.toString();
+//         const otherUser = isMine ? msg.recipients[0] : msg.sender;
 
-        map.set(convId, {
-          conversationId: convId,
-          with: {
-            id: otherUser._id,
-            username: otherUser.username,
-            displayName: otherUser.displayName || otherUser.username,
-            avatarUrl: otherUser.avatarUrl || null,
-          },
-          lastMessage: {
-            text: msg.text,
-            createdAt: msg.createdAt,
-            senderId: msg.sender._id,
-          },
-          unreadCount: 0,
-        });
-      }
-    }
+//         map.set(convId, {
+//           conversationId: convId,
+//           with: {
+//             id: otherUser._id,
+//             username: otherUser.username,
+//             displayName: otherUser.displayName || otherUser.username,
+//             avatarUrl: otherUser.avatarUrl || null,
+//           },
+//           lastMessage: {
+//             text: msg.text,
+//             createdAt: msg.createdAt,
+//             senderId: msg.sender._id,
+//           },
+//           unreadCount: 0,
+//         });
+//       }
+//     }
 
-    // unread counts per conversation
-    for (const [convId, conv] of map) {
-      const unread = await Message.countDocuments({
-        conversationId: convId,
-        sender: { $ne: req.user._id },
-        readBy: { $ne: req.user._id },
-      });
-      conv.unreadCount = unread;
-    }
+//     // unread counts per conversation
+//     for (const [convId, conv] of map) {
+//       const unread = await Message.countDocuments({
+//         conversationId: convId,
+//         sender: { $ne: req.user._id },
+//         readBy: { $ne: req.user._id },
+//       });
+//       conv.unreadCount = unread;
+//     }
 
-    const conversations = Array.from(map.values());
-    res.json({ conversations });
-  } catch (err) {
-    console.error("/conversations error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+//     const conversations = Array.from(map.values());
+//     res.json({ conversations });
+//   } catch (err) {
+//     console.error("/conversations error:", err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
 
 // ---- NEW: /conversations/user/:username ----
-app.get("api/conversations/user/:username", auth, async (req, res) => {
-  try {
-    const username = req.params.username;
-    const otherUser = await User.findOne({ username });
-    if (!otherUser) {
-      return res.status(404).json({ message: "User not found" });
-    }
+// app.get("api/conversations/user/:username", auth, async (req, res) => {
+//   try {
+//     const username = req.params.username;
+//     const otherUser = await User.findOne({ username });
+//     if (!otherUser) {
+//       return res.status(404).json({ message: "User not found" });
+//     }
 
-    const otherId = otherUser._id.toString();
-    const myId = req.user._id.toString();
-    const conversationId = [myId, otherId].sort().join("_");
+//     const otherId = otherUser._id.toString();
+//     const myId = req.user._id.toString();
+//     const conversationId = [myId, otherId].sort().join("_");
 
-    const messages = await Message.find({ conversationId })
-      .populate("sender", "username displayName avatarUrl")
-      .sort({ createdAt: 1 })
-      .lean();
+//     const messages = await Message.find({ conversationId })
+//       .populate("sender", "username displayName avatarUrl")
+//       .sort({ createdAt: 1 })
+//       .lean();
 
-    const formatted = messages.map((m) => ({
-      _id: m._id,
-      id: m._id,
-      sender: {
-        id: m.sender._id,
-        username: m.sender.username,
-        displayName: m.sender.displayName || m.sender.username,
-        avatarUrl: m.sender.avatarUrl || null,
-      },
-      text: m.text,
-      createdAt: m.createdAt,
-    }));
+//     const formatted = messages.map((m) => ({
+//       _id: m._id,
+//       id: m._id,
+//       sender: {
+//         id: m.sender._id,
+//         username: m.sender.username,
+//         displayName: m.sender.displayName || m.sender.username,
+//         avatarUrl: m.sender.avatarUrl || null,
+//       },
+//       text: m.text,
+//       createdAt: m.createdAt,
+//     }));
 
-    // mark messages as read for me
-    await Message.updateMany(
-      {
-        conversationId,
-        sender: otherId,
-        readBy: { $ne: myId },
-      },
-      { $addToSet: { readBy: myId } }
-    );
+//     // mark messages as read for me
+//     await Message.updateMany(
+//       {
+//         conversationId,
+//         sender: otherId,
+//         readBy: { $ne: myId },
+//       },
+//       { $addToSet: { readBy: myId } }
+//     );
 
-    res.json({
-      with: {
-        id: otherUser._id,
-        username: otherUser.username,
-        displayName: otherUser.displayName || otherUser.username,
-        avatarUrl: otherUser.avatarUrl || null,
-      },
-      messages: formatted,
-    });
-  } catch (err) {
-    console.error("/conversations/user/:username error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
+//     res.json({
+//       with: {
+//         id: otherUser._id,
+//         username: otherUser.username,
+//         displayName: otherUser.displayName || otherUser.username,
+//         avatarUrl: otherUser.avatarUrl || null,
+//       },
+//       messages: formatted,
+//     });
+//   } catch (err) {
+//     console.error("/conversations/user/:username error:", err);
+//     res.status(500).json({ message: "Server error" });
+//   }
+// });
 
-// ---- NEW: POST /conversations/user/:username/messages ----
-app.post(
-  "api/conversations/user/:username/messages",
-  auth,
-  async (req, res) => {
-    try {
-      const username = req.params.username;
-      const { text } = req.body;
-      const trimmed = (text || "").trim();
-      if (!trimmed) {
-        return res.status(400).json({ message: "Text is required" });
-      }
+// // ---- NEW: POST /conversations/user/:username/messages ----
+// app.post(
+//   "api/conversations/user/:username/messages",
+//   auth,
+//   async (req, res) => {
+//     try {
+//       const username = req.params.username;
+//       const { text } = req.body;
+//       const trimmed = (text || "").trim();
+//       if (!trimmed) {
+//         return res.status(400).json({ message: "Text is required" });
+//       }
 
-      const toUser = await User.findOne({ username });
-      if (!toUser) {
-        return res.status(404).json({ message: "User not found" });
-      }
+//       const toUser = await User.findOne({ username });
+//       if (!toUser) {
+//         return res.status(404).json({ message: "User not found" });
+//       }
 
-      const fromId = req.user._id.toString();
-      const toId = toUser._id.toString();
-      const conversationId = [fromId, toId].sort().join("_");
+//       const fromId = req.user._id.toString();
+//       const toId = toUser._id.toString();
+//       const conversationId = [fromId, toId].sort().join("_");
 
-      const newMessage = await Message.create({
-        conversationId,
-        sender: fromId,
-        recipients: [toId],
-        text: trimmed,
-        deliveredTo: [],
-        readBy: [],
-      });
+//       const newMessage = await Message.create({
+//         conversationId,
+//         sender: fromId,
+//         recipients: [toId],
+//         text: trimmed,
+//         deliveredTo: [],
+//         readBy: [],
+//       });
 
-      const populated = await Message.findById(newMessage._id)
-        .populate("sender", "username displayName avatarUrl")
-        .lean();
+//       const populated = await Message.findById(newMessage._id)
+//         .populate("sender", "username displayName avatarUrl")
+//         .lean();
 
-      const payload = {
-        id: populated._id,
-        conversationId,
-        sender: {
-          id: populated.sender._id,
-          username: populated.sender.username,
-          displayName:
-            populated.sender.displayName || populated.sender.username,
-          avatarUrl: populated.sender.avatarUrl || null,
-        },
-        text: populated.text,
-        createdAt: populated.createdAt,
-        delivered: false,
-        read: false,
-      };
+//       const payload = {
+//         id: populated._id,
+//         conversationId,
+//         sender: {
+//           id: populated.sender._id,
+//           username: populated.sender.username,
+//           displayName:
+//             populated.sender.displayName || populated.sender.username,
+//           avatarUrl: populated.sender.avatarUrl || null,
+//         },
+//         text: populated.text,
+//         createdAt: populated.createdAt,
+//         delivered: false,
+//         read: false,
+//       };
 
-      // emit via socket if receiver is online
-      const receiverSocketId = connectedUsers.get(toId);
-      if (receiverSocketId) {
-        io.to(receiverSocketId).emit("new_message", payload);
-      }
+//       // emit via socket if receiver is online
+//       const receiverSocketId = connectedUsers.get(toId);
+//       if (receiverSocketId) {
+//         io.to(receiverSocketId).emit("new_message", payload);
+//       }
 
-      res.status(201).json(payload);
-    } catch (err) {
-      console.error("POST /conversations/user/:username/messages error:", err);
-      res.status(500).json({ message: "Server error" });
-    }
-  }
-);
+//       res.status(201).json(payload);
+//     } catch (err) {
+//       console.error("POST /conversations/user/:username/messages error:", err);
+//       res.status(500).json({ message: "Server error" });
+//     }
+//   }
+// );
 
 // ======================================================
 // =============== SERVER START =========================
