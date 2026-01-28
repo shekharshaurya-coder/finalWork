@@ -2,28 +2,51 @@
 //  CONFIG & GLOBAL STATE
 // =====================================================
 
-// const API_URL = `http://${window.location.hostname}:3000`;4
-const API_BASE = "https://socialsync-ow8q.onrender.com";
-const socket = io(API_BASE, {
-  transports: ["websocket", "polling"],
-  upgrade: false,
-});
+// Dynamic API base - works on localhost:3000 and Render deployment
+const API_BASE = (() => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:3000`;
+  }
+  // Production - use current origin
+  return window.location.origin;
+})();
+
+let socket = null;
+
+try {
+  socket = io(API_BASE, {
+    transports: ["websocket", "polling"],
+    upgrade: false,
+  });
+} catch (err) {
+  console.error("❌ Socket.IO initialization failed:", err);
+}
 
 function initSocket() {
+  if (!socket) {
+    console.warn("⚠️ Socket.IO not initialized");
+    return;
+  }
+
   console.log("⚡ Initializing Socket.IO connection...");
 
   socket.on("connect", () => {
     console.log("🔗 Socket connected:", socket.id);
   });
 
-  socket.on("disconnect", () => {
-    console.warn("❌ Socket disconnected");
+  socket.on("connect_error", (err) => {
+    console.error("❌ Socket connection error:", err);
   });
 
-  // Example message listener
+  socket.on("disconnect", () => {
+    console.warn("⚠️ Socket disconnected");
+  });
+
   socket.on("receive_message", (msg) => {
     console.log("📨 New message:", msg);
-    showDesktopNotification(msg);
+    if (typeof showDesktopNotification === "function") {
+      showDesktopNotification(msg);
+    }
   });
 }
 

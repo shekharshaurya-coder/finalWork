@@ -7,7 +7,14 @@ const token = sessionStorage.getItem("token");
 if (!token) {
   window.location.href = "/login.html";
 }
-const API_URL = "https://socialsync-ow8q.onrender.com";
+// Dynamic API base - works on localhost:3000 and Render deployment
+const API_URL = (() => {
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return `http://${window.location.hostname}:3000`;
+  }
+  // Production - use current origin
+  return window.location.origin;
+})();
 // ==================== API HELPER ====================
 async function fetchAPI(endpoint, options = {}) {
   const defaultOptions = {

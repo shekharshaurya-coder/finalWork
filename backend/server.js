@@ -29,6 +29,15 @@ if (process.env.JWT_SECRET.length < 32) {
   process.exit(1);
 }
 
+// Get current deployment URL for CORS
+const DEPLOYMENT_URL = (() => {
+  if (process.env.NODE_ENV === 'production') {
+    // On Render, use the service URL
+    return process.env.RENDER_EXTERNAL_URL || process.env.PUBLIC_URL || '*';
+  }
+  return 'http://localhost:3000';
+})();
+
 // Rate limits
 const RATE_LIMITS = {
   auth: { windowMs: 15 * 60 * 1000, max: 5 },
@@ -103,7 +112,8 @@ app.use(express.static(path.join(__dirname, "..", "frontend")));
 
 // CORS
 app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
+  const origin = req.headers.origin || "*";
+  res.header("Access-Control-Allow-Origin", origin);
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return res.sendStatus(200);
@@ -125,7 +135,7 @@ app.get("/", (req, res) => res.redirect("/login.html"));
 connectDB();
 const io = new Server(server, {
   cors: {
-    origin: "*",
+    origin: process.env.NODE_ENV === 'production' ? [DEPLOYMENT_URL] : "*",
     methods: ["GET", "POST"],
     credentials: true,
   },

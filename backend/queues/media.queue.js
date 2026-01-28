@@ -1,9 +1,10 @@
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 
-const connection = new IORedis({
-  host: "127.0.0.1",
-  port: 6379,
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379";
+
+const connection = new IORedis(REDIS_URL, {
+  tls: REDIS_URL?.startsWith("rediss://") ? { rejectUnauthorized: false } : undefined,
   maxRetriesPerRequest: null,
   enableReadyCheck: false,
 });

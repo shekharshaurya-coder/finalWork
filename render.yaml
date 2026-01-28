@@ -1,0 +1,32 @@
+services:
+  - type: web
+    name: socialsync-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: JWT_SECRET
+        fromDatabase:
+          name: jwt_secret
+      - key: MONGODB_URI
+        fromDatabase:
+          name: mongodb_uri
+      - key: REDIS_URL
+        fromDatabase:
+          name: redis_url
+      - key: ADMIN_USERNAMES
+        value: admin
+    autoDeploy: true
+
+databases:
+  - name: mongodb
+    databaseName: socialsync
+    plan: free
+  - name: redis
+    plan: free

@@ -1234,7 +1234,7 @@
     ></div>
 
     <script>
-      const API_URL = "https://socialsync-ow8q.onrender.com";
+      const API_URL = `http://${window.location.hostname}:3000`;
       const token = sessionStorage.getItem("token");
 
       if (!token) {

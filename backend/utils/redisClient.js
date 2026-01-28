@@ -4,8 +4,14 @@ let client = null;
 
 function createClient() {
   if (!client) {
+    const redisURL = process.env.REDIS_URL || "redis://localhost:6379";
+
     client = redis.createClient({
-      url: "redis://localhost:6379",
+      url: redisURL,
+      socket: {
+        tls: redisURL?.startsWith("rediss://"),
+        rejectUnauthorized: false,
+      },
     });
 
     client.on("connect", () => console.log("🔌 Redis connecting..."));
