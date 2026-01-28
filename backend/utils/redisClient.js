@@ -4,14 +4,8 @@ let client = null;
 
 function createClient() {
   if (!client) {
-    const redisURL = process.env.REDIS_URL || "redis://localhost:6379";
-
     client = redis.createClient({
-      url: redisURL,
-      socket: {
-        tls: redisURL.startsWith("rediss://"), // Only enable TLS for Upstash
-        rejectUnauthorized: false,
-      },
+      url: "redis://localhost:6379",
     });
 
     client.on("connect", () => console.log("🔌 Redis connecting..."));

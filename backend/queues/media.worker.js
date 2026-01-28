@@ -6,18 +6,17 @@ const connectDB = require("../db");
 
 connectDB();
 
-const connection = process.env.REDIS_URL
-  ? new IORedis(process.env.REDIS_URL, {
-      tls: { rejectUnauthorized: false },
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    })
-  : new IORedis({
-      host: "127.0.0.1",
-      port: 6379,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    });
+const connection = new IORedis({
+  host: "127.0.0.1",
+  port: 6379,
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
+
+connection.on("connect", () => console.log("🔗 Media worker Redis connected"));
+connection.on("error", (e) => {
+  console.error("❌ Media worker Redis error:", e.message);
+});
 
 new Worker(
   "media_queue",

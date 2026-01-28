@@ -86,7 +86,7 @@ router.get("api/search-users", auth, async (req, res) => {
  * List conversations for current user (aggregated from messages)
  * ✅ FIXED: Proper sorting by time + no duplicates
  */
-router.get("api/conversations", auth, async (req, res) => {
+router.get("/", auth, async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.userId);
 
@@ -158,7 +158,7 @@ router.get("api/conversations", auth, async (req, res) => {
  * GET /api/conversations/user/:username
  * Load all messages between current user and target username (1:1).
  */
-router.get("api/conversations/user/:username", auth, async (req, res) => {
+router.get("/user/:username", auth, async (req, res) => {
   try {
     const myId = new mongoose.Types.ObjectId(req.userId);
     const username = req.params.username;
@@ -220,7 +220,7 @@ router.get("api/conversations/user/:username", auth, async (req, res) => {
  * ✅ ADDED: Logging for MESSAGE_SENT and MESSAGE_RECEIVED
  */
 router.post(
-  "api/conversations/user/:username/messages",
+  "/user/:username/messages",
   auth,
   async (req, res) => {
     try {

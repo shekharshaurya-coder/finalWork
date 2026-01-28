@@ -1,19 +1,30 @@
 const { Queue } = require("bullmq");
 const IORedis = require("ioredis");
 
-const connection = process.env.REDIS_URL
-  ? new IORedis(process.env.REDIS_URL, {
-      tls: { rejectUnauthorized: false },
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    })
-  : new IORedis({
-      host: "127.0.0.1",
-      port: 6379,
-      maxRetriesPerRequest: null,
-      enableReadyCheck: false,
-    });
+const connection = new IORedis({
+  host: "127.0.0.1",
+  port: 6379,
+  maxRetriesPerRequest: null,
+  enableReadyCheck: false,
+});
 
-const mediaQueue = new Queue("media_queue", { connection });
+connection.on("connect", () => console.log("🔗 Media queue Redis connected"));
+connection.on("error", (e) => {
+  console.error("❌ Media queue Redis error:", e.message);
+});
+
+let mediaQueue;
+try {
+  mediaQueue = new Queue("media_queue", { connection });
+} catch (err) {
+  console.warn("⚠️ Media queue initialization error:", err.message);
+  // Create a stub that will work later
+  mediaQueue = {
+    add: async () => {
+      console.warn("⚠️ Media queue not ready");
+      return null;
+    },
+  };
+}
 
 module.exports = mediaQueue;
