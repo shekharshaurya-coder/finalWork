@@ -57,6 +57,15 @@
       const token = sessionStorage.getItem("authToken");
       if (!token) window.location.href = "/login.html";
 
+      // Dynamic API base - works on localhost:3000 and HTTPS production
+      const API_URL = (() => {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return `http://${window.location.hostname}:3000`;
+        }
+        // Production - use current origin (already HTTPS)
+        return window.location.origin;
+      })();
+
       async function fetchAPI(endpoint, options = {}) {
         const defaultOptions = {
           headers: {
@@ -66,7 +75,7 @@
         };
 
         const response = await fetch(
-          `http://${window.location.hostname}:3000${endpoint}`,
+          `${API_URL}${endpoint}`,
           {
             ...defaultOptions,
             ...options,

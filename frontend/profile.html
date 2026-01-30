@@ -1234,7 +1234,29 @@
     ></div>
 
     <script>
-      const API_URL = `http://${window.location.hostname}:3000`;
+      // Cache buster - force reload of script
+      const SCRIPT_VERSION = '2025-01-30-v2';
+      console.log(`📝 Script version: ${SCRIPT_VERSION}`);
+      
+      // Dynamic API base - works on localhost:3000 and HTTPS production
+      const API_URL = (() => {
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const origin = window.location.origin;
+        
+        console.log(`🌐 Hostname: ${hostname}, Protocol: ${protocol}, Origin: ${origin}`);
+        
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          const localUrl = `http://${hostname}:3000`;
+          console.log(`✅ Local dev - using: ${localUrl}`);
+          return localUrl;
+        }
+        
+        // Production - use current origin (already HTTPS)
+        console.log(`✅ Production - using origin: ${origin}`);
+        return origin;
+      })();
+      console.log(`🔗 API_URL set to: ${API_URL}`);
       const token = sessionStorage.getItem("token");
 
       if (!token) {
@@ -1277,8 +1299,9 @@
         };
 
         try {
-          console.log(`Fetching: ${endpoint}`);
-          const response = await fetch(`${API_URL}${endpoint}`, {
+          const fullUrl = `${API_URL}${endpoint}`;
+          console.log(`📡 Fetching: ${fullUrl}`);
+          const response = await fetch(fullUrl, {
             ...defaultOptions,
             ...options,
             headers: { ...defaultOptions.headers, ...options.headers },
@@ -1559,7 +1582,7 @@
         const userId = currentUser.id; // your existing variable
         const anchor = document.getElementById("followersBtn");
         try {
-          const res = await fetch(`/api/users/${userId}/followers`);
+          const res = await fetch(`${API_URL}/api/users/${userId}/followers`);
           const data = await res.json();
           if (!Array.isArray(data))
             return renderDropdown("followersContainer", [], anchor);
@@ -1574,7 +1597,7 @@
         const userId = currentUser.id;
         const anchor = document.getElementById("followingBtn");
         try {
-          const res = await fetch(`/api/users/${userId}/following-list`);
+          const res = await fetch(`${API_URL}/api/users/${userId}/following-list`);
           const data = await res.json();
           if (!Array.isArray(data))
             return renderDropdown("followingContainer", [], anchor);

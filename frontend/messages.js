@@ -42,7 +42,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!token || socket) return;
 
     try {
-      socket = io(`http://${window.location.hostname}:3000`, {
+      // Use dynamic URL - HTTPS in production, HTTP:3000 on localhost
+      const socketUrl = (() => {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return `http://${window.location.hostname}:3000`;
+        }
+        return window.location.origin;
+      })();
+
+      socket = io(socketUrl, {
         transports: ["websocket", "polling"],
         upgrade: true,
         path: "/socket.io/",

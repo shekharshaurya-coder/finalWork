@@ -466,14 +466,28 @@
     </div>
 
     <script>
+      // Cache buster - force reload of script
+      const SCRIPT_VERSION = '2025-01-30-v2';
+      console.log(`📝 Script version: ${SCRIPT_VERSION}`);
+      
       const token = sessionStorage.getItem("token");
       // Dynamic API base - works on localhost:3000 and HTTPS production
       const API_URL = (() => {
-        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-          return `http://${window.location.hostname}:3000`;
+        const hostname = window.location.hostname;
+        const protocol = window.location.protocol;
+        const origin = window.location.origin;
+        
+        console.log(`🌐 Hostname: ${hostname}, Protocol: ${protocol}, Origin: ${origin}`);
+        
+        if (hostname === 'localhost' || hostname === '127.0.0.1') {
+          const localUrl = `http://${hostname}:3000`;
+          console.log(`✅ Local dev - using: ${localUrl}`);
+          return localUrl;
         }
+        
         // Production - use current origin (already HTTPS)
-        return window.location.origin;
+        console.log(`✅ Production - using origin: ${origin}`);
+        return origin;
       })();
       console.log(`🔗 Media.html API_URL set to: ${API_URL}`);
       let currentUser = null;
