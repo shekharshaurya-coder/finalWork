@@ -467,14 +467,23 @@
 
     <script>
       const token = sessionStorage.getItem("token");
-      const API_URL = "http://" + window.location.hostname + ":3000";
+      // Dynamic API base - works on localhost:3000 and HTTPS production
+      const API_URL = (() => {
+        if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+          return `http://${window.location.hostname}:3000`;
+        }
+        // Production - use current origin (already HTTPS)
+        return window.location.origin;
+      })();
+      console.log(`🔗 Media.html API_URL set to: ${API_URL}`);
       let currentUser = null;
       let allPosts = []; // Store all posts data
 
       async function getCurrentUser() {
         try {
-          console.log("🔥 Getting current user...");
-          const response = await fetch(`${API_URL}/api/users/me`, {
+          const fullUrl = `${API_URL}/api/users/me`;
+          console.log(`📡 Fetching current user from: ${fullUrl}`);
+          const response = await fetch(fullUrl, {
             headers: { Authorization: `Bearer ${token}` },
           });
 
@@ -495,8 +504,9 @@
         if (!confirm("Are you sure you want to delete this post?")) return;
 
         try {
-          console.log("🗑️ Deleting post:", postId);
-          const response = await fetch(`${API_URL}/api/posts/${postId}`, {
+          const fullUrl = `${API_URL}/api/posts/${postId}`;
+          console.log(`🗑️ Deleting post from: ${fullUrl}`);
+          const response = await fetch(fullUrl, {
             method: "DELETE",
             headers: { Authorization: `Bearer ${token}` },
           });
@@ -553,7 +563,9 @@
 
           console.log("👤 Loading posts for user:", userId);
 
-          const response = await fetch(`${API_URL}/api/users/${userId}/posts`, {
+          const fullUrl = `${API_URL}/api/users/${userId}/posts`;
+          console.log(`📡 Fetching posts from: ${fullUrl}`);
+          const response = await fetch(fullUrl, {
             headers: { Authorization: `Bearer ${token}` },
           });
 
