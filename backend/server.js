@@ -668,7 +668,14 @@ app.get("/api/users/search", auth, async (req, res) => {
       followersCount: u.followersCount || 0,
     }));
 
-    await redisHelpers.setJSON(cacheKey, result, { ex: CACHE_TTL.search });
+    try {
+      const size = JSON.stringify(result).length;
+      if (size < 5242880) { // Only cache if under 5MB
+        await redisHelpers.setJSON(cacheKey, result, { ex: CACHE_TTL.search });
+      }
+    } catch (cacheErr) {
+      console.warn("⚠️ Redis cache error:", cacheErr.message);
+    }
     sendSuccess(res, result);
   } catch (err) {
     console.error("❌ Search error:", err);
@@ -1135,7 +1142,19 @@ app.get("/api/posts/feed", auth, async (req, res) => {
       nextCursor,
     };
 
-    await redisHelpers.setJSON(cacheKey, response, { ex: CACHE_TTL.feed });
+    // Try to cache, but catch size errors (common on free Redis tiers)
+    try {
+      const size = JSON.stringify(response).length;
+      if (size < 5242880) { // Only cache if under 5MB
+        await redisHelpers.setJSON(cacheKey, response, { ex: CACHE_TTL.feed });
+        console.log(`📦 Feed cached: ${(size / 1024).toFixed(2)}KB`);
+      } else {
+        console.warn(`⚠️ Feed response too large (${(size / 1024).toFixed(2)}KB) - skipping cache`);
+      }
+    } catch (cacheErr) {
+      console.warn("⚠️ Redis cache error (continuing without cache):", cacheErr.message);
+    }
+
     sendSuccess(res, response);
   } catch (err) {
     console.error("❌ Feed error:", err.message);
@@ -1398,7 +1417,14 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
       likesCount: c.likesCount || 0,
     }));
 
-    await redisHelpers.setJSON(cacheKey, formatted, { ex: CACHE_TTL.comments });
+    try {
+      const size = JSON.stringify(formatted).length;
+      if (size < 5242880) { // Only cache if under 5MB
+        await redisHelpers.setJSON(cacheKey, formatted, { ex: CACHE_TTL.comments });
+      }
+    } catch (cacheErr) {
+      console.warn("⚠️ Redis cache error:", cacheErr.message);
+    }
     sendSuccess(res, formatted);
   } catch (err) {
     console.error("❌ Get comments error:", err);
