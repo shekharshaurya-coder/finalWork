@@ -1095,10 +1095,15 @@ app.get("/api/posts/feed", auth, async (req, res) => {
     const limit = 10;
     const cacheKey = cacheHelper.keys.feed(cursor || "first_page");
 
-    const cached = await redisHelpers.getJSON(cacheKey);
-    if (cached) {
-      console.log("✅ Feed cache hit");
-      return sendSuccess(res, cached);
+    try {
+      const cached = await redisHelpers.getJSON(cacheKey);
+      if (cached) {
+        console.log("✅ Feed cache hit");
+        return sendSuccess(res, cached);
+      }
+    } catch (cacheErr) {
+      console.warn("⚠️ Redis cache read error (continuing without cache):", cacheErr.message);
+      // Continue without cache - don't fail
     }
 
     const query = {};
@@ -1390,10 +1395,16 @@ app.post("/api/posts/:postId/comments", auth, async (req, res) => {
 app.get("/api/posts/:postId/comments", async (req, res) => {
   try {
     const cacheKey = cacheHelper.keys.comments(req.params.postId);
-    const cached = await redisHelpers.getJSON(cacheKey);
-    if (cached) {
-      console.log("✅ Comments cache hit");
-      return sendSuccess(res, cached);
+    
+    try {
+      const cached = await redisHelpers.getJSON(cacheKey);
+      if (cached) {
+        console.log("✅ Comments cache hit");
+        return sendSuccess(res, cached);
+      }
+    } catch (cacheErr) {
+      console.warn("⚠️ Redis cache read error:", cacheErr.message);
+      // Continue without cache
     }
 
     const Comment = require("./models/Comment");
