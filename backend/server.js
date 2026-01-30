@@ -1138,8 +1138,9 @@ app.get("/api/posts/feed", auth, async (req, res) => {
     await redisHelpers.setJSON(cacheKey, response, { ex: CACHE_TTL.feed });
     sendSuccess(res, response);
   } catch (err) {
-    console.error("❌ Feed error:", err);
-    sendError(res, 500, "Server error");
+    console.error("❌ Feed error:", err.message);
+    console.error("Stack:", err.stack);
+    sendError(res, 500, `Server error: ${err.message}`);
   }
 });
 
